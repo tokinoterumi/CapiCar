@@ -40,16 +40,20 @@ struct DashboardView: View {
             }
             .navigationTitle("CapiCar Dashboard")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    // App icon in dashboard
+                    Image("AppIcon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 32, height: 32)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     refreshButton
                 }
             }
-            // This handles the navigation when a TaskCardView (wrapped in a NavigationLink) is tapped.
-            .navigationDestination(for: FulfillmentTask.self) { task in
-                // In a real app, you would pass the necessary data to the detail view.
-                // For now, it's a placeholder.
-                Text("Task Detail for \(task.orderName)")
-            }
+            // Navigation is now handled by TaskGroupView sheets
             // Fetch initial data when the view first appears.
             .onAppear {
                 // To call an async function from a non-async context, wrap it in a Task.
@@ -66,6 +70,20 @@ struct DashboardView: View {
     private var mainContentView: some View {
         // A List is the most appropriate container for our grouped tasks.
         List {
+            // Current Operator Widget at the top
+            Section {
+                CurrentOperatorWidget()
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+            }
+            
+            // Sync Status Widget
+            Section {
+                SyncStatusWidget()
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+            }
+            
             // We now iterate over the identifiableTaskSections, which is fully compatible with ForEach.
             ForEach(identifiableTaskSections) { section in
                 // Only show the section if it has tasks.
@@ -136,8 +154,14 @@ struct DashboardView: View {
 #if DEBUG
 struct DashboardView_Previews: PreviewProvider {
     static var previews: some View {
-        DashboardView()
+        let mockStaffManager = StaffManager()
+        mockStaffManager.currentOperator = StaffMember(id: "staff1", name: "Test User")
+        
+        let mockSyncManager = SyncManager()
+        
+        return DashboardView()
+            .environmentObject(mockStaffManager)
+            .environmentObject(mockSyncManager)
     }
 }
 #endif
-

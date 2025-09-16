@@ -1,12 +1,5 @@
-//
-//  CapiCar_for_YOSTests.swift
-//  CapiCar for YOSTests
-//
-//  Created by Terumi on 9/2/07.
-//
-
 import Testing
-@testable import CapiCar_for_YOS
+@testable import CapiCarForYOS
 
 struct CapiCar_for_YOSTests {
 

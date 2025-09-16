@@ -169,16 +169,28 @@ export class AirtableService {
     async getTasksGroupedByStatus(): Promise<{
         pending: FulfillmentTask[];
         picking: FulfillmentTask[];
+        picked: FulfillmentTask[];
         packed: FulfillmentTask[];
         inspecting: FulfillmentTask[];
+        correctionNeeded: FulfillmentTask[];
+        correcting: FulfillmentTask[];
+        completed: FulfillmentTask[];
+        paused: FulfillmentTask[];
+        cancelled: FulfillmentTask[];
     }> {
         const allTasks = await this.getAllTasks();
 
         return {
             pending: allTasks.filter(task => task.status === TaskStatus.PENDING),
             picking: allTasks.filter(task => task.status === TaskStatus.PICKING),
+            picked: allTasks.filter(task => task.status === TaskStatus.PICKED),
             packed: allTasks.filter(task => task.status === TaskStatus.PACKED),
-            inspecting: allTasks.filter(task => task.status === TaskStatus.INSPECTING)
+            inspecting: allTasks.filter(task => task.status === TaskStatus.INSPECTING),
+            correctionNeeded: allTasks.filter(task => task.status === TaskStatus.CORRECTION_NEEDED),
+            correcting: allTasks.filter(task => task.status === TaskStatus.CORRECTING),
+            completed: allTasks.filter(task => task.status === TaskStatus.COMPLETED),
+            paused: allTasks.filter(task => task.status === TaskStatus.PAUSED),
+            cancelled: allTasks.filter(task => task.status === TaskStatus.CANCELLED)
         };
     }
 }

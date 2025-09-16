@@ -7,14 +7,30 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0D7153692E66D14A0058CF8B /* DigitalChecklistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F292E668AB500ABAD27 /* DigitalChecklistView.swift */; };
+		0638982D2E7856D400B8B44E /* StaffManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0638982C2E7856D400B8B44E /* StaffManager.swift */; };
+		0638982F2E7856DA00B8B44E /* AuthenticationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0638982E2E7856DA00B8B44E /* AuthenticationManager.swift */; };
+		063898312E785DAA00B8B44E /* TaskPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898302E785DAA00B8B44E /* TaskPreviewSheet.swift */; };
+		063898342E78609700B8B44E /* CurrentOperatorWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898322E78609700B8B44E /* CurrentOperatorWidget.swift */; };
+		063898442E7862AF00B8B44E /* SyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898432E7862AF00B8B44E /* SyncManager.swift */; };
+		063898452E7862AF00B8B44E /* DatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898412E7862AF00B8B44E /* DatabaseManager.swift */; };
+		063898462E7862AF00B8B44E /* OfflineAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898422E7862AF00B8B44E /* OfflineAPIService.swift */; };
+		063898482E7862D800B8B44E /* SyncStatusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898472E7862D800B8B44E /* SyncStatusWidget.swift */; };
+		0638984A2E78631200B8B44E /* LocalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898492E78631200B8B44E /* LocalModels.swift */; };
+		063898542E78659000B8B44E /* BarcodeSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898532E78659000B8B44E /* BarcodeSearchView.swift */; };
+		0DA3155D2E78F84F00817FD1 /* CorrectionFlowViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3155C2E78F84F00817FD1 /* CorrectionFlowViewModel.swift */; };
+		0DA3155E2E78F84F00817FD1 /* CorrectionFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3155B2E78F84F00817FD1 /* CorrectionFlowView.swift */; };
+		0DA315612E78FA1000817FD1 /* InspectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3155F2E78FA1000817FD1 /* InspectionView.swift */; };
+		0DA315622E78FA1000817FD1 /* InspectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA315602E78FA1000817FD1 /* InspectionViewModel.swift */; };
+		0DA315642E78FBC000817FD1 /* CameraScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA315632E78FBC000817FD1 /* CameraScannerView.swift */; };
+		0DA315662E78FBD300817FD1 /* VisionBarcodeScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA315652E78FBD300817FD1 /* VisionBarcodeScanner.swift */; };
+		0DA3157C2E79268900817FD1 /* StaffSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3157B2E79268900817FD1 /* StaffSessionManager.swift */; };
+		0DA3157E2E79280A00817FD1 /* StaffLoginViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3157D2E79280A00817FD1 /* StaffLoginViewModel.swift */; };
 		0DBE72202E6EB81F00FDAE9E /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F422E668E0700ABAD27 /* APIService.swift */; };
 		0DE21F152E667AB400ABAD27 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F122E667AB400ABAD27 /* ContentView.swift */; };
 		0DE21F162E667AB400ABAD27 /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F132E667AB400ABAD27 /* Item.swift */; };
 		0DE21F172E667AB400ABAD27 /* CapiCar_for_YOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F112E667AB400ABAD27 /* CapiCar_for_YOSApp.swift */; };
 		0DE21F182E667AB400ABAD27 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0DE21F102E667AB400ABAD27 /* Assets.xcassets */; };
 		0DE21F262E668A9B00ABAD27 /* ChecklistItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F252E668A9100ABAD27 /* ChecklistItemView.swift */; };
-		0DE21F282E668AA800ABAD27 /* DetailsModalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F272E668AA000ABAD27 /* DetailsModalView.swift */; };
 		0DE21F2D2E668D8000ABAD27 /* TaskCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F2C2E668D7900ABAD27 /* TaskCardView.swift */; };
 		0DE21F2F2E668D8C00ABAD27 /* TaskGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F2E2E668D8B00ABAD27 /* TaskGroupView.swift */; };
 		0DE21F312E668DA500ABAD27 /* PrimaryButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F302E668DA400ABAD27 /* PrimaryButton.swift */; };
@@ -46,6 +62,25 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0638982C2E7856D400B8B44E /* StaffManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffManager.swift; sourceTree = "<group>"; };
+		0638982E2E7856DA00B8B44E /* AuthenticationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationManager.swift; sourceTree = "<group>"; };
+		063898302E785DAA00B8B44E /* TaskPreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskPreviewSheet.swift; sourceTree = "<group>"; };
+		063898322E78609700B8B44E /* CurrentOperatorWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrentOperatorWidget.swift; sourceTree = "<group>"; };
+		063898412E7862AF00B8B44E /* DatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseManager.swift; sourceTree = "<group>"; };
+		063898422E7862AF00B8B44E /* OfflineAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineAPIService.swift; sourceTree = "<group>"; };
+		063898432E7862AF00B8B44E /* SyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncManager.swift; sourceTree = "<group>"; };
+		063898472E7862D800B8B44E /* SyncStatusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusWidget.swift; sourceTree = "<group>"; };
+		063898492E78631200B8B44E /* LocalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModels.swift; sourceTree = "<group>"; };
+		063898532E78659000B8B44E /* BarcodeSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeSearchView.swift; sourceTree = "<group>"; };
+		0DA315472E78E22C00817FD1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		0DA3155B2E78F84F00817FD1 /* CorrectionFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionFlowView.swift; sourceTree = "<group>"; };
+		0DA3155C2E78F84F00817FD1 /* CorrectionFlowViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionFlowViewModel.swift; sourceTree = "<group>"; };
+		0DA3155F2E78FA1000817FD1 /* InspectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectionView.swift; sourceTree = "<group>"; };
+		0DA315602E78FA1000817FD1 /* InspectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectionViewModel.swift; sourceTree = "<group>"; };
+		0DA315632E78FBC000817FD1 /* CameraScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScannerView.swift; sourceTree = "<group>"; };
+		0DA315652E78FBD300817FD1 /* VisionBarcodeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionBarcodeScanner.swift; sourceTree = "<group>"; };
+		0DA3157B2E79268900817FD1 /* StaffSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffSessionManager.swift; sourceTree = "<group>"; };
+		0DA3157D2E79280A00817FD1 /* StaffLoginViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffLoginViewModel.swift; sourceTree = "<group>"; };
 		0DE21EB02E666D7900ABAD27 /* CapiCarForYOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CapiCarForYOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DE21EBF2E666D7B00ABAD27 /* CapiCarForYOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CapiCarForYOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DE21EC92E666D7B00ABAD27 /* CapiCarForYOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CapiCarForYOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -54,8 +89,6 @@
 		0DE21F122E667AB400ABAD27 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		0DE21F132E667AB400ABAD27 /* Item.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Item.swift; sourceTree = "<group>"; };
 		0DE21F252E668A9100ABAD27 /* ChecklistItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChecklistItemView.swift; sourceTree = "<group>"; };
-		0DE21F272E668AA000ABAD27 /* DetailsModalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsModalView.swift; sourceTree = "<group>"; };
-		0DE21F292E668AB500ABAD27 /* DigitalChecklistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigitalChecklistView.swift; sourceTree = "<group>"; };
 		0DE21F2C2E668D7900ABAD27 /* TaskCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskCardView.swift; sourceTree = "<group>"; };
 		0DE21F2E2E668D8B00ABAD27 /* TaskGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskGroupView.swift; sourceTree = "<group>"; };
 		0DE21F302E668DA400ABAD27 /* PrimaryButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrimaryButton.swift; sourceTree = "<group>"; };
@@ -108,6 +141,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		063898332E78609700B8B44E /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				063898322E78609700B8B44E /* CurrentOperatorWidget.swift */,
+				063898472E7862D800B8B44E /* SyncStatusWidget.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
 		0DE21EA72E666D7900ABAD27 = {
 			isa = PBXGroup;
 			children = (
@@ -140,6 +182,7 @@
 				0DE21F112E667AB400ABAD27 /* CapiCar_for_YOSApp.swift */,
 				0DE21F122E667AB400ABAD27 /* ContentView.swift */,
 				0DE21F132E667AB400ABAD27 /* Item.swift */,
+				0DA315472E78E22C00817FD1 /* Info.plist */,
 			);
 			path = CapiCarForYOS;
 			sourceTree = "<group>";
@@ -158,6 +201,7 @@
 		0DE21F1A2E667DC800ABAD27 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				063898332E78609700B8B44E /* Dashboard */,
 				0DE21F242E668A7500ABAD27 /* Task */,
 				0DE21F232E668A6900ABAD27 /* Shared */,
 			);
@@ -168,6 +212,12 @@
 			isa = PBXGroup;
 			children = (
 				0DE21F422E668E0700ABAD27 /* APIService.swift */,
+				0638982C2E7856D400B8B44E /* StaffManager.swift */,
+				0DA3157B2E79268900817FD1 /* StaffSessionManager.swift */,
+				0638982E2E7856DA00B8B44E /* AuthenticationManager.swift */,
+				063898412E7862AF00B8B44E /* DatabaseManager.swift */,
+				063898422E7862AF00B8B44E /* OfflineAPIService.swift */,
+				063898432E7862AF00B8B44E /* SyncManager.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -175,6 +225,7 @@
 		0DE21F1D2E667DDF00ABAD27 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				063898492E78631200B8B44E /* LocalModels.swift */,
 				0DE21F452E6699CA00ABAD27 /* TaskModels.swift */,
 			);
 			path = Models;
@@ -200,6 +251,7 @@
 			isa = PBXGroup;
 			children = (
 				0DE21F402E668DFB00ABAD27 /* LoginView.swift */,
+				0DA3157D2E79280A00817FD1 /* StaffLoginViewModel.swift */,
 			);
 			path = Auth;
 			sourceTree = "<group>";
@@ -216,8 +268,14 @@
 		0DE21F222E6688FC00ABAD27 /* Tasks */ = {
 			isa = PBXGroup;
 			children = (
+				063898302E785DAA00B8B44E /* TaskPreviewSheet.swift */,
 				0DE21F3A2E668DD600ABAD27 /* TaskDetailView.swift */,
 				0DE21F382E668DD100ABAD27 /* TaskDetailViewModel.swift */,
+				063898532E78659000B8B44E /* BarcodeSearchView.swift */,
+				0DA3155F2E78FA1000817FD1 /* InspectionView.swift */,
+				0DA315602E78FA1000817FD1 /* InspectionViewModel.swift */,
+				0DA3155B2E78F84F00817FD1 /* CorrectionFlowView.swift */,
+				0DA3155C2E78F84F00817FD1 /* CorrectionFlowViewModel.swift */,
 			);
 			path = Tasks;
 			sourceTree = "<group>";
@@ -226,6 +284,8 @@
 			isa = PBXGroup;
 			children = (
 				0DE21F302E668DA400ABAD27 /* PrimaryButton.swift */,
+				0DA315632E78FBC000817FD1 /* CameraScannerView.swift */,
+				0DA315652E78FBD300817FD1 /* VisionBarcodeScanner.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -234,8 +294,6 @@
 			isa = PBXGroup;
 			children = (
 				0DE21F252E668A9100ABAD27 /* ChecklistItemView.swift */,
-				0DE21F272E668AA000ABAD27 /* DetailsModalView.swift */,
-				0DE21F292E668AB500ABAD27 /* DigitalChecklistView.swift */,
 				0DE21F2C2E668D7900ABAD27 /* TaskCardView.swift */,
 				0DE21F2E2E668D8B00ABAD27 /* TaskGroupView.swift */,
 			);
@@ -384,23 +442,39 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0DA315642E78FBC000817FD1 /* CameraScannerView.swift in Sources */,
+				0DA3157E2E79280A00817FD1 /* StaffLoginViewModel.swift in Sources */,
 				0DE21F3B2E668DD900ABAD27 /* TaskDetailView.swift in Sources */,
+				063898542E78659000B8B44E /* BarcodeSearchView.swift in Sources */,
 				0DBE72202E6EB81F00FDAE9E /* APIService.swift in Sources */,
+				0638982D2E7856D400B8B44E /* StaffManager.swift in Sources */,
 				0DE21F152E667AB400ABAD27 /* ContentView.swift in Sources */,
+				0638984A2E78631200B8B44E /* LocalModels.swift in Sources */,
 				0DE21F352E668DBF00ABAD27 /* DashboardViewModel.swift in Sources */,
+				063898342E78609700B8B44E /* CurrentOperatorWidget.swift in Sources */,
+				063898312E785DAA00B8B44E /* TaskPreviewSheet.swift in Sources */,
 				0DE21F462E6699CE00ABAD27 /* TaskModels.swift in Sources */,
 				0DE21F392E668DD300ABAD27 /* TaskDetailViewModel.swift in Sources */,
 				0DE21F2D2E668D8000ABAD27 /* TaskCardView.swift in Sources */,
-				0DE21F282E668AA800ABAD27 /* DetailsModalView.swift in Sources */,
-				0D7153692E66D14A0058CF8B /* DigitalChecklistView.swift in Sources */,
 				0DE21F3F2E668DF000ABAD27 /* StaffCheckInView.swift in Sources */,
 				0DE21F162E667AB400ABAD27 /* Item.swift in Sources */,
 				0DE21F372E668DC400ABAD27 /* DashboardView.swift in Sources */,
+				0638982F2E7856DA00B8B44E /* AuthenticationManager.swift in Sources */,
+				063898482E7862D800B8B44E /* SyncStatusWidget.swift in Sources */,
+				0DA3157C2E79268900817FD1 /* StaffSessionManager.swift in Sources */,
+				063898442E7862AF00B8B44E /* SyncManager.swift in Sources */,
+				063898452E7862AF00B8B44E /* DatabaseManager.swift in Sources */,
+				063898462E7862AF00B8B44E /* OfflineAPIService.swift in Sources */,
 				0DE21F262E668A9B00ABAD27 /* ChecklistItemView.swift in Sources */,
 				0DE21F2F2E668D8C00ABAD27 /* TaskGroupView.swift in Sources */,
 				0DE21F312E668DA500ABAD27 /* PrimaryButton.swift in Sources */,
+				0DA315612E78FA1000817FD1 /* InspectionView.swift in Sources */,
+				0DA315662E78FBD300817FD1 /* VisionBarcodeScanner.swift in Sources */,
+				0DA315622E78FA1000817FD1 /* InspectionViewModel.swift in Sources */,
 				0DE21F172E667AB400ABAD27 /* CapiCar_for_YOSApp.swift in Sources */,
 				0DE21F412E668DFC00ABAD27 /* LoginView.swift in Sources */,
+				0DA3155D2E78F84F00817FD1 /* CorrectionFlowViewModel.swift in Sources */,
+				0DA3155E2E78F84F00817FD1 /* CorrectionFlowView.swift in Sources */,
 				0DE21F3D2E668DEB00ABAD27 /* StaffViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -562,7 +636,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -589,7 +664,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -614,7 +690,8 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "terumi.tokino.CapiCar-for-YOSTests";
@@ -632,7 +709,8 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "terumi.tokino.CapiCar-for-YOSTests";
@@ -649,7 +727,8 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "terumi.tokino.CapiCar-for-YOSUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -665,7 +744,8 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "terumi.tokino.CapiCar-for-YOSUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";

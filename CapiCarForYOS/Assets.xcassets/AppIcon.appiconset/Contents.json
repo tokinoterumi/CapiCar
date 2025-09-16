@@ -1,28 +1,61 @@
 {
   "images" : [
     {
+      "filename" : "CapiCarIcon.png",
       "idiom" : "universal",
       "platform" : "ios",
-      "size" : "1024x1024"
+      "size" : "20x20"
     },
     {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "dark"
-        }
-      ],
+      "filename" : "CapiCarIcon.png",
       "idiom" : "universal",
       "platform" : "ios",
-      "size" : "1024x1024"
+      "size" : "29x29"
     },
     {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "tinted"
-        }
-      ],
+      "filename" : "CapiCarIcon.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "40x40"
+    },
+    {
+      "filename" : "CapiCarIcon.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "58x58"
+    },
+    {
+      "filename" : "CapiCarIcon.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "60x60"
+    },
+    {
+      "filename" : "CapiCarIcon.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "80x80"
+    },
+    {
+      "filename" : "CapiCarIcon.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "87x87"
+    },
+    {
+      "filename" : "CapiCarIcon.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "120x120"
+    },
+    {
+      "filename" : "CapiCarIcon.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "180x180"
+    },
+    {
+      "filename" : "CapiCarIcon.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

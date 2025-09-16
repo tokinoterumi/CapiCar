@@ -14,19 +14,31 @@ class TaskDetailViewModel: ObservableObject {
     @Published var weightInput: String = ""
     @Published var dimensionsInput: String = ""
     
+    // State for correction flow
+    @Published var correctionErrorType: String = ""
+    @Published var correctionNotes: String = ""
+    @Published var newTrackingNumber: String = ""
+    
+    // State for exception reporting
+    @Published var exceptionReason: String = ""
+    @Published var exceptionNotes: String = ""
+    
+    // State for item highlighting
+    @Published var highlightedItemId: Int?
+    
     // This is passed in during initialization
     let currentOperator: StaffMember?
     
     // MARK: - Private Properties
     
-    private let apiService: APIService
+    private let offlineAPIService: OfflineAPIService
     
     // MARK: - Initializer
     
-    init(task: FulfillmentTask, currentOperator: StaffMember?, apiService: APIService = APIService()) {
+    init(task: FulfillmentTask, currentOperator: StaffMember?, offlineAPIService: OfflineAPIService? = nil) {
         self.task = task
         self.currentOperator = currentOperator
-        self.apiService = apiService
+        self.offlineAPIService = offlineAPIService ?? OfflineAPIService.shared
         
         parseChecklist(from: task.checklistJson)
     }
@@ -34,7 +46,7 @@ class TaskDetailViewModel: ObservableObject {
     // MARK: - Checklist Interaction Methods
     
     /// Increments the picked quantity for a specific checklist item.
-    func incrementQuantity(for item: ChecklistItem) {
+    func incrementQuantity(for item: ChecklistItem) async {
         guard let index = checklistItems.firstIndex(where: { $0.id == item.id }) else { return }
         
         var updatedItem = checklistItems[index]
@@ -48,10 +60,13 @@ class TaskDetailViewModel: ObservableObject {
             
             checklistItems[index] = updatedItem
         }
+        
+        // Sync checklist changes to server
+        await syncChecklistToServer()
     }
     
     /// Decrements the picked quantity for a specific checklist item.
-    func decrementQuantity(for item: ChecklistItem) {
+    func decrementQuantity(for item: ChecklistItem) async {
         guard let index = checklistItems.firstIndex(where: { $0.id == item.id }) else { return }
         
         var updatedItem = checklistItems[index]
@@ -61,6 +76,9 @@ class TaskDetailViewModel: ObservableObject {
             updatedItem.is_completed = false
             checklistItems[index] = updatedItem
         }
+        
+        // Sync checklist changes to server
+        await syncChecklistToServer()
     }
 
     /// Toggles the completion status for a single-quantity item.
@@ -72,17 +90,24 @@ class TaskDetailViewModel: ObservableObject {
         updatedItem.is_completed.toggle()
         updatedItem.quantity_picked = updatedItem.is_completed ? 1 : 0
         checklistItems[index] = updatedItem
+        
+        // Sync checklist changes to server
+        Task {
+            await syncChecklistToServer()
+        }
     }
     
     // MARK: - Public Computed Properties for the View
     
     var primaryActionText: String {
-        // ... (same as your original implementation)
         switch task.status {
         case .pending: return "Start Picking"
         case .picking: return "Complete Picking"
-        case .packed: return "Start Inspection"
-        case .inspecting: return "Complete Inspection"
+        case .picked: return "Start Packing"
+        case .packed: return "Quick Inspection Pass"
+        case .inspecting: return "Quick Inspection Pass"
+        case .correctionNeeded: return "Start Correction"
+        case .correcting: return "Complete Correction"
         case .completed: return "Task Completed"
         case .paused: return "Resume Picking"
         case .cancelled: return "Task Cancelled"
@@ -90,52 +115,197 @@ class TaskDetailViewModel: ObservableObject {
     }
     
     var canPerformPrimaryAction: Bool {
-        // The logic for enabling/disabling the primary action button.
+        guard currentOperator != nil else { return false }
+        
         switch task.status {
         case .pending, .paused:
-            return currentOperator != nil
+            return true
         case .picking:
-            // Can only complete if all items are checked off.
-            return currentOperator != nil && checklistItems.allSatisfy { $0.is_completed }
-        case .packed, .inspecting:
-            return currentOperator != nil
+            // Can only complete if all items are checked off
+            return checklistItems.allSatisfy { $0.is_completed }
+        case .picked:
+            // Can start packing if weight/dimensions entered
+            return !weightInput.isEmpty && !dimensionsInput.isEmpty
+        case .packed:
+            return true
+        case .inspecting:
+            return true // Can complete inspection (pass) via main button
+        case .correctionNeeded:
+            return true
+        case .correcting:
+            return true
         case .completed, .cancelled:
             return false
         }
     }
     
+    // MARK: - Validation Properties
+    
+    var canEnterCorrection: Bool {
+        return currentOperator != nil && !correctionErrorType.isEmpty
+    }
+    
+    var canResolveCorrection: Bool {
+        return currentOperator != nil
+    }
+    
+    var canReportException: Bool {
+        return currentOperator != nil && !exceptionReason.isEmpty
+    }
+    
+    // MARK: - UI State Properties
+    
+    var isInCorrectionFlow: Bool {
+        // In a real app, you might have a task status like .inCorrection
+        // For now, we can track this with additional state if needed
+        return false // TODO: Implement correction flow state tracking
+    }
+    
+    var needsWeightAndDimensions: Bool {
+        return task.status == .picked
+    }
+    
+    var checklistCompletionRate: Double {
+        guard !checklistItems.isEmpty else { return 0.0 }
+        let completedCount = checklistItems.filter { $0.is_completed }.count
+        return Double(completedCount) / Double(checklistItems.count)
+    }
+    
+    var isReadyForInspection: Bool {
+        return task.status == .packed || task.status == .inspecting
+    }
+    
+    var canUseDetailedInspection: Bool {
+        return isReadyForInspection && currentOperator != nil
+    }
+    
     // MARK: - Task Actions (Happy Path & Escape Hatches)
     
     func handlePrimaryAction() async {
-        // CORRECTED: Added explicit `TaskAction` type to resolve ambiguity.
         switch task.status {
         case .pending, .paused:
-            await performTaskAction(TaskAction.startPicking)
+            await startPicking()
         case .picking:
-            await performTaskAction(TaskAction.completePicking, payload: ["weight": weightInput, "dimensions": dimensionsInput])
+            await completePicking()
+        case .picked:
+            await startPacking()
         case .packed:
-            await performTaskAction(TaskAction.startInspection)
+            await startInspection()
         case .inspecting:
-            await performTaskAction(TaskAction.completeInspection)
+            await completeInspection()
+        case .correctionNeeded:
+            await startCorrection()
+        case .correcting:
+            await completeCorrection()
         default:
             break
         }
     }
 
-    /// Handles the "Pause Task" escape hatch.
-    func pauseTask() async {
-        // This would call a new endpoint in your APIService
-        // await performTaskAction(.pause)
-        print("DEBUG: Pausing task...")
-        // For the MVP, we can simulate this locally or assume the action succeeds.
-        self.task.status = .paused
+    // MARK: - Specific Action Methods
+    
+    /// Start picking process
+    func startPicking() async {
+        await performTaskAction(.startPicking)
     }
     
-    /// Handles the "Report Exception" escape hatch.
-    func reportException(reason: String) async {
-        // This would call a new endpoint
-        // await performTaskAction(.reportException, payload: ["reason": reason])
-        print("DEBUG: Reporting exception: \(reason)...")
+    /// Complete picking (just finish picking items)
+    func completePicking() async {
+        await performTaskAction(.completePicking)
+    }
+    
+    /// Start packing with weight and dimensions
+    func startPacking() async {
+        guard !weightInput.isEmpty && !dimensionsInput.isEmpty else {
+            errorMessage = "Please enter weight and dimensions before starting packing."
+            return
+        }
+        
+        let payload = [
+            "weight": weightInput,
+            "dimensions": dimensionsInput
+        ]
+        await performTaskAction(.startPacking, payload: payload)
+    }
+    
+    /// Start inspection process
+    func startInspection() async {
+        await performTaskAction(.startInspection)
+    }
+    
+    /// Complete inspection successfully
+    func completeInspection() async {
+        await performTaskAction(.completeInspection)
+    }
+    
+    /// Start correction process
+    func startCorrection() async {
+        await performTaskAction(.startCorrection)
+    }
+    
+    /// Complete correction and return to workflow
+    func completeCorrection() async {
+        await performTaskAction(.resolveCorrection)
+    }
+    
+    /// Enter correction due to failed inspection
+    func enterCorrection() async {
+        guard !correctionErrorType.isEmpty else {
+            errorMessage = "Please specify the error type before entering correction."
+            return
+        }
+        
+        var payload = ["errorType": correctionErrorType]
+        if !correctionNotes.isEmpty {
+            payload["notes"] = correctionNotes
+        }
+        
+        await performTaskAction(.enterCorrection, payload: payload)
+    }
+    
+    /// Resolve correction and continue workflow
+    func resolveCorrection() async {
+        var payload: [String: String] = [:]
+        if !newTrackingNumber.isEmpty {
+            payload["newTrackingNumber"] = newTrackingNumber
+        }
+        
+        await performTaskAction(.resolveCorrection, payload: payload.isEmpty ? nil : payload)
+    }
+    
+    /// Report general exception
+    func reportException() async {
+        guard !exceptionReason.isEmpty else {
+            errorMessage = "Please specify the reason before reporting exception."
+            return
+        }
+        
+        var payload = ["reason": exceptionReason]
+        if !exceptionNotes.isEmpty {
+            payload["notes"] = exceptionNotes
+        }
+        
+        await performTaskAction(.reportException, payload: payload)
+    }
+    
+    /// Convenience method for reporting exception with reason
+    func reportException(reason: String, notes: String = "") async {
+        exceptionReason = reason
+        exceptionNotes = notes
+        await reportException()
+    }
+    
+    /// Pause task (local state change for MVP)
+    func pauseTask() async {
+        // For MVP, we simulate pausing locally
+        // In production, this would call a pause API endpoint
+        self.task.status = .paused
+        print("DEBUG: Task paused locally")
+    }
+    
+    /// Cancel task - leads to cancelled state, freeing up operators
+    func cancelTask() async {
+        await performTaskAction(.cancelTask)
     }
 
     // MARK: - Private Helper Methods
@@ -151,7 +321,7 @@ class TaskDetailViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            let updatedTask = try await apiService.performTaskAction(
+            let updatedTask = try await offlineAPIService.performTaskAction(
                 taskId: task.id,
                 action: action,
                 operatorId: operatorId,
@@ -159,7 +329,10 @@ class TaskDetailViewModel: ObservableObject {
             )
             self.task = updatedTask
         } catch {
-            self.errorMessage = "Failed to perform task action. Please try again."
+            let isOnline = offlineAPIService.isOnline
+            self.errorMessage = isOnline 
+                ? "Failed to perform task action. Please try again."
+                : "Action saved offline. Will sync when connection is restored."
             print("Error performing task action: \(error)")
         }
         
@@ -167,18 +340,74 @@ class TaskDetailViewModel: ObservableObject {
     }
     
     private func parseChecklist(from jsonString: String) {
-        // ... (same as your original implementation)
         guard !jsonString.isEmpty, let data = jsonString.data(using: .utf8) else {
             self.checklistItems = []
             return
         }
         
         do {
-            self.checklistItems = try apiService.jsonDecoder.decode([ChecklistItem].self, from: data)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            self.checklistItems = try decoder.decode([ChecklistItem].self, from: data)
         } catch {
             print("Error parsing checklist JSON: \(error)")
             self.checklistItems = []
+            // Only show error message in non-preview context
+            #if !DEBUG
             self.errorMessage = "Could not read checklist data."
+            #endif
         }
+    }
+    
+    /// Syncs the current checklist state to the server
+    private func syncChecklistToServer() async {
+        guard let operatorId = currentOperator?.id else { return }
+        
+        do {
+            let updatedTask = try await offlineAPIService.updateTaskChecklist(
+                taskId: task.id,
+                checklist: checklistItems,
+                operatorId: operatorId
+            )
+            // Update the task with the response, but keep our local checklist items
+            // since the user might still be interacting with them
+            self.task = updatedTask
+        } catch {
+            print("Error syncing checklist: \(error)")
+            // Don't show error to user for checklist sync - it's background operation
+            // The offline service will handle queuing for later sync
+        }
+    }
+    
+    // MARK: - Barcode Search Support
+    
+    /// Highlights a specific item (e.g., from barcode search results)
+    func highlightItem(_ item: ChecklistItem) {
+        highlightedItemId = item.id
+        
+        // Auto-clear highlight after 3 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            self.highlightedItemId = nil
+        }
+    }
+    
+    /// Reports a missing item that couldn't be found
+    func reportMissingItem(_ query: String) {
+        // For MVP, we'll add this as an exception
+        exceptionReason = "Item not found in checklist"
+        exceptionNotes = "Searched for: \(query)"
+        
+        // Create audit log entry (unused in MVP, would be saved in production)
+        let _ = AuditLog(
+            id: UUID().uuidString,
+            timestamp: Date(),
+            operatorName: currentOperator?.name ?? "Unknown",
+            taskOrderName: task.orderName,
+            actionType: "ITEM_NOT_FOUND",
+            details: "Searched for: \(query)"
+        )
+        
+        // In a real implementation, you'd save this audit log
+        print("📝 Missing item reported: \(query)")
     }
 }

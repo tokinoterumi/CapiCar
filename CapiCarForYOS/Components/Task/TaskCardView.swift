@@ -8,15 +8,19 @@ struct TaskCardView: View {
     // The action to perform when the card is tapped.
     let action: () -> Void
     
-    // Private computed property to determine the status color.
+    // Private computed property to determine the status color based on simplified groups
     private var statusColor: Color {
-        switch task.status {
+        switch task.groupStatus {
         case .pending: return .orange
         case .picking: return .blue
-        case .packed, .inspecting: return .purple
+        case .packed: return .cyan
+        case .inspecting: return .purple
         case .completed: return .green
         case .cancelled: return .gray
         case .paused: return .yellow
+        case .picked, .correctionNeeded, .correcting:
+            // groupStatus should map these to other cases, but including for safety
+            return .purple
         }
     }
     
@@ -35,6 +39,8 @@ struct TaskCardView: View {
                             .font(.headline)
                             .fontWeight(.bold)
                             .foregroundColor(.primary)
+                            
+                            
                         Spacer()
                         Text(task.createdAt, style: .time)
                             .font(.subheadline)
@@ -55,12 +61,23 @@ struct TaskCardView: View {
                         .foregroundColor(statusColor)
                         .fontWeight(.medium)
                     }
+                    
+                    // Status footnote for correction states
+                    if let statusIndicator = task.statusIndicator {
+                        Spacer().frame(height: 6) // Visual separation
+                        HStack(spacing: 6) {
+                            Image(systemName: statusIndicator.icon)
+                                .font(.caption2)
+                            Text(statusIndicator.text)
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(statusIndicator.color == "orange" ? .orange : .blue)
+                    }
                 }
                 
-                // 3. Navigation Indicator
+                // 3. Navigation Indicator - Removed manual chevron since NavigationLink provides one
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundColor(.secondary.opacity(0.5))
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
@@ -99,11 +116,23 @@ extension FulfillmentTask {
         shippingName: "Emily Carter", createdAt: Date().addingTimeInterval(-10800),
         checklistJson: "[]", currentOperator: .previewSuzuki
     )
+    
+    static let previewCorrectionNeeded = FulfillmentTask(
+        id: "4", orderName: "#YM1028", status: .correctionNeeded,
+        shippingName: "Michael Johnson", createdAt: Date().addingTimeInterval(-1800),
+        checklistJson: "[]", currentOperator: .previewTanaka
+    )
+    
+    static let previewCorrecting = FulfillmentTask(
+        id: "5", orderName: "#YM1029", status: .correcting,
+        shippingName: "Sarah Wilson", createdAt: Date().addingTimeInterval(-900),
+        checklistJson: "[]", currentOperator: .previewSuzuki
+    )
 }
 
 extension StaffMember {
-    static let previewTanaka = StaffMember(id: "s001", name: "Tanaka-san")
-    static let previewSuzuki = StaffMember(id: "s002", name: "Suzuki-san")
+    static let previewTanaka = StaffMember(id: "s001", name: "Capybara")
+    static let previewSuzuki = StaffMember(id: "s003", name: "Caterpillar")
 }
 
 
@@ -125,6 +154,16 @@ struct TaskCardView_Previews: PreviewProvider {
             TaskCardView(
                 task: .previewCompleted,
                 action: { print("Tapped Completed Task") }
+            )
+            
+            TaskCardView(
+                task: .previewCorrectionNeeded,
+                action: { print("Tapped Correction Needed Task") }
+            )
+            
+            TaskCardView(
+                task: .previewCorrecting,
+                action: { print("Tapped Correcting Task") }
             )
         }
         .listStyle(PlainListStyle())

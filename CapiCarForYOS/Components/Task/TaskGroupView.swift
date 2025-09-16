@@ -4,12 +4,23 @@ struct TaskGroupView: View {
     let title: String
     let tasks: [FulfillmentTask]
     
+    // Environment objects
+    @EnvironmentObject private var staffManager: StaffManager
+    
+    // State for sheet presentation and navigation
+    @State private var selectedTask: FulfillmentTask?
+    @State private var showingTaskPreview = false
+    @State private var showingFullWorkflow = false
+    
     // A private computed property to determine the group's color based on the first task.
     private var groupColor: Color {
         switch tasks.first?.status {
         case .pending: return .orange
-        case .picking: return .blue
+        case .picking: return .cyan
+        case .picked: return .blue
         case .packed, .inspecting: return .purple
+        case .correctionNeeded: return .red
+        case .correcting: return .pink
         case .completed: return .green
         case .cancelled: return .gray
         case .paused: return .yellow
@@ -24,13 +35,13 @@ struct TaskGroupView: View {
                 emptyStateView
             } else {
                 ForEach(tasks) { task in
-
-                    NavigationLink(value: task) {
-                        TaskCardView(
-                            task: task,
-                            action: {}
-                        )
-                    }
+                    TaskCardView(
+                        task: task,
+                        action: {
+                            selectedTask = task
+                            showingTaskPreview = true
+                        }
+                    )
                 }
             }
         } header: {
@@ -52,6 +63,31 @@ struct TaskGroupView: View {
             }
         }
         .padding(.vertical, 8)
+        .sheet(isPresented: $showingTaskPreview) {
+            if let task = selectedTask {
+                TaskPreviewSheet(
+                    task: task,
+                    showingFullWorkflow: $showingFullWorkflow
+                )
+            }
+        }
+        .fullScreenCover(isPresented: $showingFullWorkflow) {
+            if let task = selectedTask {
+                NavigationStack {
+                    TaskDetailView(
+                        task: task,
+                        currentOperator: staffManager.currentOperator
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Close") {
+                                showingFullWorkflow = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
     
     private var emptyStateView: some View {
@@ -75,24 +111,30 @@ struct TaskGroupView: View {
 #if DEBUG
 struct TaskGroupView_Previews: PreviewProvider {
     static var previews: some View {
-        List {
-            TaskGroupView(
-                title: "Pending",
-                tasks: [FulfillmentTask.previewPending]
-            )
-            
-            TaskGroupView(
-                title: "Paused",
-                tasks: [FulfillmentTask.previewPaused]
-            )
-            
-            TaskGroupView(
-                title: "Empty Group",
-                tasks: []
-            )
+        let mockStaffManager = StaffManager()
+        mockStaffManager.currentOperator = StaffMember(id: "staff1", name: "Test User")
+        
+        return NavigationStack {
+            List {
+                TaskGroupView(
+                    title: "Pending",
+                    tasks: [FulfillmentTask.previewPending]
+                )
+                
+                TaskGroupView(
+                    title: "Paused",
+                    tasks: [FulfillmentTask.previewPaused]
+                )
+                
+                TaskGroupView(
+                    title: "Completed",
+                    tasks: [FulfillmentTask.previewCompleted]
+                )
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("Dashboard")
         }
-        .listStyle(.insetGrouped) // Use a style that supports headers well.
-        .navigationTitle("Dashboard")
+        .environmentObject(mockStaffManager)
     }
 }
 #endif

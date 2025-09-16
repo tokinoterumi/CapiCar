@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // Custom error type for more specific API failures
 enum APIError: Error {
@@ -48,32 +49,9 @@ class APIService {
     }
     
     func fetchDashboardTasks() async throws -> GroupedTasks {
-        // 1. Construct the URL for the dashboard endpoint.
-        guard let url = URL(string: "\(baseURL)/dashboard") else {
-            throw APIError.badURL
-        }
-        
-        // 2. Create the URLRequest.
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        
-        // 3. Perform the network request.
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        // 4. Check for a successful HTTP response.
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            // In a real app, you might decode an error message from the server body here.
-            throw APIError.serverError(message: "Failed to fetch data from server.")
-        }
-        
-        // 5. Decode the JSON data into our GroupedTasks model.
-        do {
-            let groupedTasks = try jsonDecoder.decode(GroupedTasks.self, from: data)
-            return groupedTasks
-        } catch {
-            // If decoding fails, wrap the error for better debugging.
-            throw APIError.decodingError(error: error)
-        }
+        // Use the main dashboard data method and extract just the tasks
+        let dashboardData = try await fetchDashboardData()
+        return dashboardData.tasks
     }
     
     // MARK: - Task API
@@ -132,7 +110,13 @@ class APIService {
             throw APIError.badURL
         }
         
-        let requestBody = UpdateChecklistRequest(checklist: checklist, operatorId: operatorId)
+        // Serialize checklist to JSON string as backend expects
+        let checklistData = try jsonEncoder.encode(checklist)
+        guard let checklistJson = String(data: checklistData, encoding: .utf8) else {
+            throw APIError.unknown
+        }
+        
+        let requestBody = UpdateChecklistRequest(checklistJson: checklistJson, operatorId: operatorId)
         
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
@@ -197,7 +181,7 @@ struct TaskActionRequest: Codable {
 }
 
 struct UpdateChecklistRequest: Codable {
-    let checklist: [ChecklistItem]
+    let checklistJson: String
     let operatorId: String
 }
 
@@ -220,13 +204,14 @@ struct DashboardData: Codable {
 }
 
 struct DashboardStats: Codable {
-    let pending: Int
-    let picking: Int
-    let packed: Int
-    let inspecting: Int
-    let completed: Int
-    let cancelled: Int
-    let total: Int
+    let pending: Int        // pending tasks
+    let picking: Int        // picking + picked tasks
+    let packed: Int         // packed tasks
+    let inspecting: Int     // inspecting + correctionNeeded + correcting tasks
+    let completed: Int      // completed tasks
+    let paused: Int         // paused tasks
+    let cancelled: Int      // cancelled tasks
+    let total: Int          // total tasks across all statuses
 }
 
 struct TaskResponse: Codable {
@@ -256,10 +241,14 @@ struct CheckInResult: Codable {
 enum TaskAction: String, Codable, CaseIterable {
     case startPicking = "START_PICKING"
     case completePicking = "COMPLETE_PICKING"
+    case startPacking = "START_PACKING"
     case startInspection = "START_INSPECTION"
     case completeInspection = "COMPLETE_INSPECTION"
     case enterCorrection = "ENTER_CORRECTION"
+    case startCorrection = "START_CORRECTION"
+    case resolveCorrection = "RESOLVE_CORRECTION"
     case reportException = "REPORT_EXCEPTION"
+    case cancelTask = "CANCEL_TASK"
 }
 
 enum CheckInAction: String, Codable {

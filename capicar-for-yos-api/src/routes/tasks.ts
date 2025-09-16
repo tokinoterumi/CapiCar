@@ -1,6 +1,6 @@
 import express from 'express';
 import { airtableService } from '../services/airtableService';
-import { TaskStatus } from '../types';
+import { TaskStatus, TaskAction } from '../types';
 
 const router = express.Router();
 
@@ -50,7 +50,7 @@ router.post('/action', async (req, res) => {
         const currentTime = new Date().toISOString();
 
         switch (action) {
-            case 'START_PICKING':
+            case TaskAction.START_PICKING:
                 updatedTask = await airtableService.updateTaskStatus(
                     taskId,
                     TaskStatus.PICKING,
@@ -70,12 +70,32 @@ router.post('/action', async (req, res) => {
                 }
                 break;
 
-            case 'COMPLETE_PICKING':
+            case TaskAction.COMPLETE_PICKING:
+                updatedTask = await airtableService.updateTaskStatus(
+                    taskId,
+                    TaskStatus.PICKED,
+                    operatorId
+                );
+
+                // Log the action
+                if (operatorId) {
+                    await airtableService.logAction(
+                        operatorId,
+                        taskId,
+                        TaskAction.COMPLETE_PICKING,
+                        TaskStatus.PICKING,
+                        TaskStatus.PICKED,
+                        'Completed picking process'
+                    );
+                }
+                break;
+
+            case TaskAction.START_PACKING:
                 // Validate payload for weight and dimensions
                 if (!payload?.weight || !payload?.dimensions) {
                     return res.status(400).json({
                         success: false,
-                        error: 'Weight and dimensions are required for completing picking'
+                        error: 'Weight and dimensions are required for starting packing'
                     });
                 }
 
@@ -90,15 +110,15 @@ router.post('/action', async (req, res) => {
                     await airtableService.logAction(
                         operatorId,
                         taskId,
-                        'COMPLETE_PICKING',
-                        'Picking',
-                        'Packed',
-                        `Completed picking. Weight: ${payload.weight}, Dimensions: ${payload.dimensions}`
+                        TaskAction.START_PACKING,
+                        TaskStatus.PICKED,
+                        TaskStatus.PACKED,
+                        `Started packing. Weight: ${payload.weight}, Dimensions: ${payload.dimensions}`
                     );
                 }
                 break;
 
-            case 'START_INSPECTION':
+            case TaskAction.START_INSPECTION:
                 updatedTask = await airtableService.updateTaskStatus(
                     taskId,
                     TaskStatus.INSPECTING,
@@ -109,15 +129,15 @@ router.post('/action', async (req, res) => {
                     await airtableService.logAction(
                         operatorId,
                         taskId,
-                        'START_INSPECTION',
-                        'Packed',
-                        'Inspecting',
+                        TaskAction.START_INSPECTION,
+                        TaskStatus.PACKED,
+                        TaskStatus.INSPECTING,
                         'Started quality inspection'
                     );
                 }
                 break;
 
-            case 'COMPLETE_INSPECTION':
+            case TaskAction.COMPLETE_INSPECTION:
                 updatedTask = await airtableService.updateTaskStatus(
                     taskId,
                     TaskStatus.COMPLETED,
@@ -128,26 +148,26 @@ router.post('/action', async (req, res) => {
                     await airtableService.logAction(
                         operatorId,
                         taskId,
-                        'COMPLETE_INSPECTION',
-                        'Inspecting',
-                        'Completed',
+                        TaskAction.COMPLETE_INSPECTION,
+                        TaskStatus.INSPECTING,
+                        TaskStatus.COMPLETED,
                         'Passed quality inspection'
                     );
                 }
                 break;
 
-            case 'ENTER_CORRECTION':
+            case TaskAction.ENTER_CORRECTION:
                 // Handle inspection failure and correction
-                if (!payload?.errorType || !payload?.notes) {
+                if (!payload?.errorType) {
                     return res.status(400).json({
                         success: false,
-                        error: 'Error type and notes are required for corrections'
+                        error: 'Error type is required for corrections'
                     });
                 }
 
                 updatedTask = await airtableService.updateTaskStatus(
                     taskId,
-                    TaskStatus.PICKING, // Back to picking for correction
+                    TaskStatus.CORRECTION_NEEDED,
                     operatorId
                 );
 
@@ -155,15 +175,75 @@ router.post('/action', async (req, res) => {
                     await airtableService.logAction(
                         operatorId,
                         taskId,
-                        'ENTER_CORRECTION',
-                        'Inspecting',
-                        'Picking',
-                        `Correction needed: ${payload.errorType} - ${payload.notes}`
+                        TaskAction.ENTER_CORRECTION,
+                        TaskStatus.INSPECTING,
+                        TaskStatus.CORRECTION_NEEDED,
+                        `Correction needed: ${payload.errorType}${payload.notes ? ' - ' + payload.notes : ''}`
                     );
                 }
                 break;
 
-            case 'REPORT_EXCEPTION':
+            case TaskAction.START_CORRECTION:
+                updatedTask = await airtableService.updateTaskStatus(
+                    taskId,
+                    TaskStatus.CORRECTING,
+                    operatorId
+                );
+
+                if (operatorId) {
+                    await airtableService.logAction(
+                        operatorId,
+                        taskId,
+                        TaskAction.START_CORRECTION,
+                        TaskStatus.CORRECTION_NEEDED,
+                        TaskStatus.CORRECTING,
+                        'Started correction process'
+                    );
+                }
+                break;
+
+            case TaskAction.RESOLVE_CORRECTION:
+                // Determine where to go after correction based on error type
+                const targetStatus = payload?.errorType === 'PICKING_ERROR' ? TaskStatus.PICKED : TaskStatus.PACKED;
+                
+                updatedTask = await airtableService.updateTaskStatus(
+                    taskId,
+                    targetStatus,
+                    operatorId
+                );
+
+                if (operatorId) {
+                    await airtableService.logAction(
+                        operatorId,
+                        taskId,
+                        TaskAction.RESOLVE_CORRECTION,
+                        TaskStatus.CORRECTING,
+                        targetStatus,
+                        `Resolved correction${payload?.newTrackingNumber ? '. New tracking: ' + payload.newTrackingNumber : ''}`
+                    );
+                }
+                break;
+
+            case TaskAction.CANCEL_TASK:
+                updatedTask = await airtableService.updateTaskStatus(
+                    taskId,
+                    TaskStatus.CANCELLED,
+                    operatorId
+                );
+
+                if (operatorId) {
+                    await airtableService.logAction(
+                        operatorId,
+                        taskId,
+                        TaskAction.CANCEL_TASK,
+                        '',
+                        TaskStatus.CANCELLED,
+                        'Task cancelled by operator'
+                    );
+                }
+                break;
+
+            case TaskAction.REPORT_EXCEPTION:
                 if (!payload?.reason) {
                     return res.status(400).json({
                         success: false,
@@ -176,7 +256,7 @@ router.post('/action', async (req, res) => {
                     await airtableService.logAction(
                         operatorId,
                         taskId,
-                        'REPORT_EXCEPTION',
+                        TaskAction.REPORT_EXCEPTION,
                         '',
                         '',
                         `Exception reported: ${payload.reason} - ${payload.notes || ''}`
