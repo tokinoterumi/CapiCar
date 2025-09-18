@@ -30,13 +30,13 @@ struct InspectionView: View {
         }
         .navigationTitle("Quality Inspection")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
+        .toolbar(content: {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("Back") {
                     dismiss()
                 }
             }
-        }
+        })
         .overlay {
             if viewModel.isLoading {
                 Color.black.opacity(0.4).ignoresSafeArea()

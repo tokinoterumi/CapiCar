@@ -17,20 +17,41 @@ class OfflineAPIService {
     // MARK: - Dashboard API (Offline-First)
     
     func fetchDashboardData() async throws -> DashboardData {
-        // Always try local first
+        // Try local first
         let localTasks = try databaseManager.fetchAllTasks()
-        
-        // Convert to simplified grouped format (matching backend transformation)
+
+        // If no local data and we're online, fetch from API
+        if localTasks.isEmpty && syncManager?.isOnline == true {
+            print("📡 No local tasks found, fetching from API...")
+            let freshData = try await apiService.fetchDashboardData()
+
+            // Save tasks to local database for future offline access
+            let allTasks = [
+                freshData.tasks.pending,
+                freshData.tasks.picking,
+                freshData.tasks.packed,
+                freshData.tasks.inspecting,
+                freshData.tasks.completed,
+                freshData.tasks.paused,
+                freshData.tasks.cancelled
+            ].flatMap { $0 }
+
+            try databaseManager.saveTasks(allTasks)
+
+            return freshData
+        }
+
+        // Convert local tasks to simplified grouped format (matching backend transformation)
         let pendingTasks = localTasks.filter { $0.status == .pending }
         let pickingTasks = localTasks.filter { $0.status == .picking || $0.status == .picked }
         let packedTasks = localTasks.filter { $0.status == .packed }
-        let inspectingTasks = localTasks.filter { 
-            $0.status == .inspecting || $0.status == .correctionNeeded || $0.status == .correcting 
+        let inspectingTasks = localTasks.filter {
+            $0.status == .inspecting || $0.status == .correctionNeeded || $0.status == .correcting
         }
         let completedTasks = localTasks.filter { $0.status == .completed }
         let pausedTasks = localTasks.filter { $0.status == .paused }
         let cancelledTasks = localTasks.filter { $0.status == .cancelled }
-        
+
         let groupedTasks = GroupedTasks(
             pending: pendingTasks,
             picking: pickingTasks,
@@ -40,7 +61,7 @@ class OfflineAPIService {
             paused: pausedTasks,
             cancelled: cancelledTasks
         )
-        
+
         // Create stats from simplified groups
         let stats = DashboardStats(
             pending: pendingTasks.count,
@@ -52,20 +73,20 @@ class OfflineAPIService {
             cancelled: cancelledTasks.count,
             total: localTasks.count
         )
-        
+
         let dashboardData = DashboardData(
             tasks: groupedTasks,
             stats: stats,
             lastUpdated: syncManager?.lastSyncDate?.ISO8601Format() ?? "Never"
         )
-        
+
         // Trigger background sync if online
         if let syncManager = syncManager, syncManager.isOnline && !syncManager.isSyncing {
             Task {
                 await syncManager.performFullSync()
             }
         }
-        
+
         return dashboardData
     }
     

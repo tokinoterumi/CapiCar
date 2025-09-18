@@ -29,13 +29,13 @@ struct TaskPreviewSheet: View {
             }
             .navigationTitle("Task Preview")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
+            .toolbar(content: {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Close") {
                         dismiss()
                     }
                 }
-            }
+            })
             
             // MARK: - Action Button
             actionButtonSection
@@ -51,7 +51,7 @@ struct TaskPreviewSheet: View {
                     .font(.title2)
                     .fontWeight(.bold)
                 
-                Text("Created: \(task.createdAt, style: .date)")
+                Text("Created: \(task.createdAtDate, style: .date)")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -298,7 +298,7 @@ struct TaskPreviewSheet_Previews: PreviewProvider {
             orderName: "#YM1001",
             status: .pending,
             shippingName: "John Appleseed",
-            createdAt: Date(),
+            createdAt: Date().ISO8601Format(),
             checklistJson: """
             [
                 {

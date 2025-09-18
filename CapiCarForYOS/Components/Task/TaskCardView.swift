@@ -42,7 +42,7 @@ struct TaskCardView: View {
                             
                             
                         Spacer()
-                        Text(task.createdAt, style: .time)
+                        Text(task.createdAtDate, style: .time)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -101,31 +101,31 @@ struct TaskCardView: View {
 extension FulfillmentTask {
     static let previewPending = FulfillmentTask(
         id: "1", orderName: "#YM1025", status: .pending,
-        shippingName: "John Appleseed", createdAt: Date().addingTimeInterval(-3600),
+        shippingName: "John Appleseed", createdAt: Date().addingTimeInterval(-3600).ISO8601Format(),
         checklistJson: "[]", currentOperator: nil
     )
     
     static let previewPaused = FulfillmentTask(
         id: "2", orderName: "#YM1026", status: .paused,
-        shippingName: "Yui Takahashi", createdAt: Date().addingTimeInterval(-7200),
+        shippingName: "Yui Takahashi", createdAt: Date().addingTimeInterval(-7200).ISO8601Format(),
         checklistJson: "[]", currentOperator: .previewTanaka
     )
     
     static let previewCompleted = FulfillmentTask(
         id: "3", orderName: "#YM1027", status: .completed,
-        shippingName: "Emily Carter", createdAt: Date().addingTimeInterval(-10800),
+        shippingName: "Emily Carter", createdAt: Date().addingTimeInterval(-10800).ISO8601Format(),
         checklistJson: "[]", currentOperator: .previewSuzuki
     )
     
     static let previewCorrectionNeeded = FulfillmentTask(
         id: "4", orderName: "#YM1028", status: .correctionNeeded,
-        shippingName: "Michael Johnson", createdAt: Date().addingTimeInterval(-1800),
+        shippingName: "Michael Johnson", createdAt: Date().addingTimeInterval(-1800).ISO8601Format(),
         checklistJson: "[]", currentOperator: .previewTanaka
     )
     
     static let previewCorrecting = FulfillmentTask(
         id: "5", orderName: "#YM1029", status: .correcting,
-        shippingName: "Sarah Wilson", createdAt: Date().addingTimeInterval(-900),
+        shippingName: "Sarah Wilson", createdAt: Date().addingTimeInterval(-900).ISO8601Format(),
         checklistJson: "[]", currentOperator: .previewSuzuki
     )
 }

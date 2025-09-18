@@ -43,14 +43,9 @@ struct ChecklistItemView: View {
         }
         .padding(.vertical, 12)
         .contentShape(Rectangle()) // Make the whole Hstack tappable for accessibility
-        .background(
-            // Highlight effect for scanned items
-            viewModel.highlightedItemId == item.id ? 
-            Color.yellow.opacity(0.3) : Color.clear
-        )
+        .background(Color.clear)
         .animation(.default, value: item.is_completed)
         .animation(.default, value: item.quantity_picked)
-        .animation(.easeInOut(duration: 0.5), value: viewModel.highlightedItemId)
     }
     
     // MARK: - Subviews for Controls

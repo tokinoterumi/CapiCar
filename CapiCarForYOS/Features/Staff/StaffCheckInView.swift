@@ -149,4 +149,3 @@ struct StaffCheckInView_Previews: PreviewProvider {
     }
 }
 #endif
-

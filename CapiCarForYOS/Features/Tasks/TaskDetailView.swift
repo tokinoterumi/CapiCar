@@ -10,7 +10,6 @@ struct TaskDetailView: View {
     @Environment(\.dismiss) private var dismiss
     
     // State for barcode search
-    @State private var showingBarcodeSearch = false
     
     // State for correction flow
     @State private var showingCorrectionFlow = false
@@ -39,7 +38,7 @@ struct TaskDetailView: View {
         }
         .navigationTitle(viewModel.task.orderName)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
+        .toolbar(content: {
             // Toolbar button for the "Pause" escape hatch.
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Pause") {
@@ -51,7 +50,7 @@ struct TaskDetailView: View {
                 }
                 .disabled(viewModel.isLoading)
             }
-        }
+        })
         .overlay {
             // Show a loading spinner over the whole view when isLoading is true.
             if viewModel.isLoading {
@@ -68,19 +67,6 @@ struct TaskDetailView: View {
         }, message: {
             Text(viewModel.errorMessage ?? "An unknown error occurred.")
         })
-        // Barcode search sheet
-        .sheet(isPresented: $showingBarcodeSearch) {
-            BarcodeSearchView(
-                isPresented: $showingBarcodeSearch,
-                checklistItems: viewModel.checklistItems,
-                onItemFound: { item in
-                    viewModel.highlightItem(item)
-                },
-                onItemNotFound: { query in
-                    viewModel.reportMissingItem(query)
-                }
-            )
-        }
         // Correction flow sheet
         .sheet(isPresented: $showingCorrectionFlow) {
             CorrectionFlowView(
@@ -124,26 +110,8 @@ struct TaskDetailView: View {
             HStack {
                 Text("Items to Pick")
                     .font(.title3.bold())
-                
+
                 Spacer()
-                
-                // Quick search/scan button
-                Button(action: {
-                    showingBarcodeSearch = true
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "barcode.viewfinder")
-                            .font(.caption)
-                        Text("Find Item")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                    }
-                    .foregroundColor(.blue)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(16)
-                }
             }
             .padding(.bottom, 8)
             
@@ -158,8 +126,8 @@ struct TaskDetailView: View {
     }
     
     private var footerActionView: some View {
-        VStack(spacing: 12) {
-            // Conditionally show input fields when picked and ready for packing.
+        VStack(spacing: 16) {
+            // Conditionally show input fields when picked and ready for packing
             if viewModel.task.status == .picked {
                 HStack(spacing: 16) {
                     TextField("Weight (kg)", text: $viewModel.weightInput)
@@ -169,18 +137,8 @@ struct TaskDetailView: View {
                 .textFieldStyle(.roundedBorder)
             }
 
-            // Show detailed inspection interface when packed or inspecting
-            if viewModel.task.status == .packed {
-                PrimaryButton(
-                    title: "Start Detailed Inspection",
-                    color: .blue
-                ) {
-                    showingInspectionView = true
-                }
-            }
-            
-            // Show inspection failure button when inspecting
-            if viewModel.task.status == .inspecting {
+            // Status-specific secondary actions
+            if viewModel.task.status == .packed || viewModel.task.status == .inspecting {
                 HStack(spacing: 12) {
                     PrimaryButton(
                         title: "Detailed Inspection",
@@ -188,45 +146,20 @@ struct TaskDetailView: View {
                     ) {
                         showingInspectionView = true
                     }
-                    
-                    PrimaryButton(
-                        title: "Fail Inspection",
-                        isSecondary: true,
-                        isDestructive: true
-                    ) {
-                        showingCorrectionFlow = true
+
+                    if viewModel.task.status == .inspecting {
+                        PrimaryButton(
+                            title: "Fail Inspection",
+                            isSecondary: true,
+                            isDestructive: true
+                        ) {
+                            showingCorrectionFlow = true
+                        }
                     }
                 }
             }
-            
-            // Separate action buttons for Report Issue and Cancel
-            HStack(spacing: 12) {
-                // Report Issue button - leads to exception handling
-                PrimaryButton(
-                    title: "Report Issue",
-                    isSecondary: true,
-                    isDestructive: true
-                ) {
-                    Task {
-                        await viewModel.reportException(reason: "Issue reported by operator")
-                        dismiss()
-                    }
-                }
-                
-                // Cancel button - leads to task cancellation
-                PrimaryButton(
-                    title: "Cancel",
-                    isSecondary: true,
-                    isDestructive: true
-                ) {
-                    Task {
-                        await viewModel.cancelTask()
-                        dismiss()
-                    }
-                }
-            }
-            
-            // The main action button.
+
+            // Main action button - always prominent
             PrimaryButton(
                 title: viewModel.primaryActionText,
                 isLoading: viewModel.isLoading,
@@ -239,7 +172,7 @@ struct TaskDetailView: View {
             )
         }
         .padding()
-        .background(.regularMaterial) // A blurred background that adapts.
+        .background(.regularMaterial)
     }
 }
 
@@ -280,7 +213,7 @@ extension FulfillmentTask {
             orderName: "#PREV1001",
             status: .picking,
             shippingName: "Tim Cook",
-            createdAt: Date(),
+            createdAt: Date().ISO8601Format(),
             checklistJson: sampleChecklistJSON,
             currentOperator: StaffMember(id: "s001", name: "Tanaka-san")
         )

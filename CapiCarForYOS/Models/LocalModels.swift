@@ -49,7 +49,7 @@ final class LocalFulfillmentTask {
             orderName: orderName,
             status: TaskStatus(rawValue: status) ?? .pending,
             shippingName: shippingName,
-            createdAt: createdAt,
+            createdAt: createdAt.ISO8601Format(),
             checklistJson: checklistJson,
             currentOperator: currentOperator
         )
@@ -207,7 +207,7 @@ extension FulfillmentTask {
             orderName: orderName,
             status: status.rawValue,
             shippingName: shippingName,
-            createdAt: createdAt,
+            createdAt: ISO8601DateFormatter().date(from: createdAt) ?? Date(),
             checklistJson: checklistJson,
             currentOperatorId: currentOperator?.id,
             currentOperatorName: currentOperator?.name

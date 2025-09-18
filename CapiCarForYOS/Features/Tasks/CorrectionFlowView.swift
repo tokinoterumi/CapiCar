@@ -25,13 +25,13 @@ struct CorrectionFlowView: View {
         }
         .navigationTitle("Correction Required")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
+        .toolbar(content: {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("Cancel") {
                     dismiss()
                 }
             }
-        }
+        })
         .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
             Button("OK") { viewModel.errorMessage = nil }
         } message: {

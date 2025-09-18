@@ -3,14 +3,10 @@ import SwiftUI
 struct TaskGroupView: View {
     let title: String
     let tasks: [FulfillmentTask]
-    
+    let onTaskSelected: (FulfillmentTask) -> Void
+
     // Environment objects
     @EnvironmentObject private var staffManager: StaffManager
-    
-    // State for sheet presentation and navigation
-    @State private var selectedTask: FulfillmentTask?
-    @State private var showingTaskPreview = false
-    @State private var showingFullWorkflow = false
     
     // A private computed property to determine the group's color based on the first task.
     private var groupColor: Color {
@@ -38,8 +34,7 @@ struct TaskGroupView: View {
                     TaskCardView(
                         task: task,
                         action: {
-                            selectedTask = task
-                            showingTaskPreview = true
+                            onTaskSelected(task)
                         }
                     )
                 }
@@ -63,31 +58,6 @@ struct TaskGroupView: View {
             }
         }
         .padding(.vertical, 8)
-        .sheet(isPresented: $showingTaskPreview) {
-            if let task = selectedTask {
-                TaskPreviewSheet(
-                    task: task,
-                    showingFullWorkflow: $showingFullWorkflow
-                )
-            }
-        }
-        .fullScreenCover(isPresented: $showingFullWorkflow) {
-            if let task = selectedTask {
-                NavigationStack {
-                    TaskDetailView(
-                        task: task,
-                        currentOperator: staffManager.currentOperator
-                    )
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button("Close") {
-                                showingFullWorkflow = false
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
     
     private var emptyStateView: some View {
@@ -118,17 +88,20 @@ struct TaskGroupView_Previews: PreviewProvider {
             List {
                 TaskGroupView(
                     title: "Pending",
-                    tasks: [FulfillmentTask.previewPending]
+                    tasks: [FulfillmentTask.previewPending],
+                    onTaskSelected: { _ in }
                 )
-                
+
                 TaskGroupView(
                     title: "Paused",
-                    tasks: [FulfillmentTask.previewPaused]
+                    tasks: [FulfillmentTask.previewPaused],
+                    onTaskSelected: { _ in }
                 )
-                
+
                 TaskGroupView(
                     title: "Completed",
-                    tasks: [FulfillmentTask.previewCompleted]
+                    tasks: [FulfillmentTask.previewCompleted],
+                    onTaskSelected: { _ in }
                 )
             }
             .listStyle(.insetGrouped)

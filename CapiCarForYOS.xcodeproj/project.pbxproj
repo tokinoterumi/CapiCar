@@ -16,7 +16,6 @@
 		063898462E7862AF00B8B44E /* OfflineAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898422E7862AF00B8B44E /* OfflineAPIService.swift */; };
 		063898482E7862D800B8B44E /* SyncStatusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898472E7862D800B8B44E /* SyncStatusWidget.swift */; };
 		0638984A2E78631200B8B44E /* LocalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898492E78631200B8B44E /* LocalModels.swift */; };
-		063898542E78659000B8B44E /* BarcodeSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898532E78659000B8B44E /* BarcodeSearchView.swift */; };
 		0DA3155D2E78F84F00817FD1 /* CorrectionFlowViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3155C2E78F84F00817FD1 /* CorrectionFlowViewModel.swift */; };
 		0DA3155E2E78F84F00817FD1 /* CorrectionFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3155B2E78F84F00817FD1 /* CorrectionFlowView.swift */; };
 		0DA315612E78FA1000817FD1 /* InspectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3155F2E78FA1000817FD1 /* InspectionView.swift */; };
@@ -26,6 +25,8 @@
 		0DA3157C2E79268900817FD1 /* StaffSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3157B2E79268900817FD1 /* StaffSessionManager.swift */; };
 		0DA3157E2E79280A00817FD1 /* StaffLoginViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3157D2E79280A00817FD1 /* StaffLoginViewModel.swift */; };
 		0DBE72202E6EB81F00FDAE9E /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F422E668E0700ABAD27 /* APIService.swift */; };
+		0DE0C4132E7AF03B00CF7394 /* UserSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C4122E7AF03B00CF7394 /* UserSessionManager.swift */; };
+		0DE0C4152E7AF1A000CF7394 /* NetworkSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C4142E7AF1A000CF7394 /* NetworkSettingsView.swift */; };
 		0DE21F152E667AB400ABAD27 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F122E667AB400ABAD27 /* ContentView.swift */; };
 		0DE21F162E667AB400ABAD27 /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F132E667AB400ABAD27 /* Item.swift */; };
 		0DE21F172E667AB400ABAD27 /* CapiCar_for_YOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F112E667AB400ABAD27 /* CapiCar_for_YOSApp.swift */; };
@@ -71,7 +72,6 @@
 		063898432E7862AF00B8B44E /* SyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncManager.swift; sourceTree = "<group>"; };
 		063898472E7862D800B8B44E /* SyncStatusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusWidget.swift; sourceTree = "<group>"; };
 		063898492E78631200B8B44E /* LocalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModels.swift; sourceTree = "<group>"; };
-		063898532E78659000B8B44E /* BarcodeSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeSearchView.swift; sourceTree = "<group>"; };
 		0DA315472E78E22C00817FD1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		0DA3155B2E78F84F00817FD1 /* CorrectionFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionFlowView.swift; sourceTree = "<group>"; };
 		0DA3155C2E78F84F00817FD1 /* CorrectionFlowViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionFlowViewModel.swift; sourceTree = "<group>"; };
@@ -81,6 +81,8 @@
 		0DA315652E78FBD300817FD1 /* VisionBarcodeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionBarcodeScanner.swift; sourceTree = "<group>"; };
 		0DA3157B2E79268900817FD1 /* StaffSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffSessionManager.swift; sourceTree = "<group>"; };
 		0DA3157D2E79280A00817FD1 /* StaffLoginViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffLoginViewModel.swift; sourceTree = "<group>"; };
+		0DE0C4122E7AF03B00CF7394 /* UserSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserSessionManager.swift; sourceTree = "<group>"; };
+		0DE0C4142E7AF1A000CF7394 /* NetworkSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsView.swift; sourceTree = "<group>"; };
 		0DE21EB02E666D7900ABAD27 /* CapiCarForYOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CapiCarForYOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DE21EBF2E666D7B00ABAD27 /* CapiCarForYOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CapiCarForYOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DE21EC92E666D7B00ABAD27 /* CapiCarForYOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CapiCarForYOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -214,6 +216,7 @@
 				0DE21F422E668E0700ABAD27 /* APIService.swift */,
 				0638982C2E7856D400B8B44E /* StaffManager.swift */,
 				0DA3157B2E79268900817FD1 /* StaffSessionManager.swift */,
+				0DE0C4122E7AF03B00CF7394 /* UserSessionManager.swift */,
 				0638982E2E7856DA00B8B44E /* AuthenticationManager.swift */,
 				063898412E7862AF00B8B44E /* DatabaseManager.swift */,
 				063898422E7862AF00B8B44E /* OfflineAPIService.swift */,
@@ -271,7 +274,6 @@
 				063898302E785DAA00B8B44E /* TaskPreviewSheet.swift */,
 				0DE21F3A2E668DD600ABAD27 /* TaskDetailView.swift */,
 				0DE21F382E668DD100ABAD27 /* TaskDetailViewModel.swift */,
-				063898532E78659000B8B44E /* BarcodeSearchView.swift */,
 				0DA3155F2E78FA1000817FD1 /* InspectionView.swift */,
 				0DA315602E78FA1000817FD1 /* InspectionViewModel.swift */,
 				0DA3155B2E78F84F00817FD1 /* CorrectionFlowView.swift */,
@@ -285,6 +287,7 @@
 			children = (
 				0DE21F302E668DA400ABAD27 /* PrimaryButton.swift */,
 				0DA315632E78FBC000817FD1 /* CameraScannerView.swift */,
+				0DE0C4142E7AF1A000CF7394 /* NetworkSettingsView.swift */,
 				0DA315652E78FBD300817FD1 /* VisionBarcodeScanner.swift */,
 			);
 			path = Shared;
@@ -445,7 +448,6 @@
 				0DA315642E78FBC000817FD1 /* CameraScannerView.swift in Sources */,
 				0DA3157E2E79280A00817FD1 /* StaffLoginViewModel.swift in Sources */,
 				0DE21F3B2E668DD900ABAD27 /* TaskDetailView.swift in Sources */,
-				063898542E78659000B8B44E /* BarcodeSearchView.swift in Sources */,
 				0DBE72202E6EB81F00FDAE9E /* APIService.swift in Sources */,
 				0638982D2E7856D400B8B44E /* StaffManager.swift in Sources */,
 				0DE21F152E667AB400ABAD27 /* ContentView.swift in Sources */,
@@ -455,10 +457,12 @@
 				063898312E785DAA00B8B44E /* TaskPreviewSheet.swift in Sources */,
 				0DE21F462E6699CE00ABAD27 /* TaskModels.swift in Sources */,
 				0DE21F392E668DD300ABAD27 /* TaskDetailViewModel.swift in Sources */,
+				0DE0C4132E7AF03B00CF7394 /* UserSessionManager.swift in Sources */,
 				0DE21F2D2E668D8000ABAD27 /* TaskCardView.swift in Sources */,
 				0DE21F3F2E668DF000ABAD27 /* StaffCheckInView.swift in Sources */,
 				0DE21F162E667AB400ABAD27 /* Item.swift in Sources */,
 				0DE21F372E668DC400ABAD27 /* DashboardView.swift in Sources */,
+				0DE0C4152E7AF1A000CF7394 /* NetworkSettingsView.swift in Sources */,
 				0638982F2E7856DA00B8B44E /* AuthenticationManager.swift in Sources */,
 				063898482E7862D800B8B44E /* SyncStatusWidget.swift in Sources */,
 				0DA3157C2E79268900817FD1 /* StaffSessionManager.swift in Sources */,

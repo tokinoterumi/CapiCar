@@ -24,7 +24,6 @@ class TaskDetailViewModel: ObservableObject {
     @Published var exceptionNotes: String = ""
     
     // State for item highlighting
-    @Published var highlightedItemId: Int?
     
     // This is passed in during initialization
     let currentOperator: StaffMember?
@@ -379,35 +378,4 @@ class TaskDetailViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Barcode Search Support
-    
-    /// Highlights a specific item (e.g., from barcode search results)
-    func highlightItem(_ item: ChecklistItem) {
-        highlightedItemId = item.id
-        
-        // Auto-clear highlight after 3 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            self.highlightedItemId = nil
-        }
-    }
-    
-    /// Reports a missing item that couldn't be found
-    func reportMissingItem(_ query: String) {
-        // For MVP, we'll add this as an exception
-        exceptionReason = "Item not found in checklist"
-        exceptionNotes = "Searched for: \(query)"
-        
-        // Create audit log entry (unused in MVP, would be saved in production)
-        let _ = AuditLog(
-            id: UUID().uuidString,
-            timestamp: Date(),
-            operatorName: currentOperator?.name ?? "Unknown",
-            taskOrderName: task.orderName,
-            actionType: "ITEM_NOT_FOUND",
-            details: "Searched for: \(query)"
-        )
-        
-        // In a real implementation, you'd save this audit log
-        print("📝 Missing item reported: \(query)")
-    }
 }

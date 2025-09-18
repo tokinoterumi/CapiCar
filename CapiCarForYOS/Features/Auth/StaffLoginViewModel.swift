@@ -3,68 +3,52 @@ import Combine
 
 @MainActor
 class StaffLoginViewModel: ObservableObject {
-    
-    // MARK: - Published Properties
-    
-    @Published var staffMembers: [StaffMember] = []
-    @Published var selectedStaff: StaffMember?
-    @Published var isLoading: Bool = false
-    @Published var isLoggingIn: Bool = false
+    @Published var username = ""
+    @Published var password = ""
+    @Published var isLoggingIn = false
     @Published var errorMessage: String?
+    @Published var showErrorAlert = false
     
-    // MARK: - Dependencies
+    private var cancellables = Set<AnyCancellable>()
     
-    private let apiService: APIService
-    private let sessionManager = StaffSessionManager.shared
-    
-    // MARK: - Computed Properties
+    // --- Hardcoded User Credentials ---
+    private let correctUsername = "Capybara"
+    private let correctPassword = "CapiCapi"
     
     var canLogin: Bool {
-        selectedStaff != nil && !isLoggingIn
+        !username.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !password.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !isLoggingIn
     }
     
-    // MARK: - Initialization
-    
-    init(apiService: APIService = APIService.shared) {
-        self.apiService = apiService
-    }
-    
-    // MARK: - Public Methods
-    
-    func loadStaff() async {
-        isLoading = true
-        errorMessage = nil
-        
-        do {
-            staffMembers = try await apiService.fetchAllStaff()
-            
-            // Auto-select if only one staff member
-            if staffMembers.count == 1 {
-                selectedStaff = staffMembers.first
-            }
-            
-        } catch {
-            errorMessage = "Failed to load staff: \(error.localizedDescription)"
-            print("Error loading staff: \(error)")
-        }
-        
-        isLoading = false
-    }
-    
-    func selectStaff(_ staff: StaffMember) {
-        selectedStaff = staff
-        errorMessage = nil
+    init() {
+        // This publisher automatically sets showErrorAlert when errorMessage changes.
+        $errorMessage
+            .map { $0 != nil }
+            .assign(to: \.showErrorAlert, on: self)
+            .store(in: &cancellables)
     }
     
     func performLogin() {
-        guard let staff = selectedStaff else { return }
+        guard canLogin else { return }
         
         isLoggingIn = true
         errorMessage = nil
         
-        // Simulate slight delay for better UX
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.sessionManager.login(staff: staff)
+        // Simulate a 1-second network delay for realism
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            // Use UserSessionManager for actual user authentication
+            let loginSuccess = UserSessionManager.shared.login(username: self.username, password: self.password)
+
+            if loginSuccess {
+                // --- SUCCESS ---
+                // User authentication successful
+                // They will now proceed to StaffCheckInView to select a staff member to operate as
+                print("✅ User authentication successful: \(self.username)")
+            } else {
+                // --- FAILURE ---
+                self.errorMessage = "Invalid username or password. Please try again."
+            }
             self.isLoggingIn = false
         }
     }

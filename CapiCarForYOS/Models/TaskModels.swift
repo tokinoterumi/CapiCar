@@ -6,7 +6,7 @@ struct FulfillmentTask: Identifiable, Codable, Equatable, Hashable {
     let orderName: String
     var status: TaskStatus
     let shippingName: String
-    let createdAt: Date
+    let createdAt: String  // Temporarily using String to bypass date decoding issues
     let checklistJson: String
     var currentOperator: StaffMember?
     
@@ -44,6 +44,11 @@ struct TaskStatusIndicator {
 
 // MARK: - Task Status Extensions
 extension FulfillmentTask {
+    /// Computed property to convert createdAt string to Date for UI formatting
+    var createdAtDate: Date {
+        return ISO8601DateFormatter().date(from: createdAt) ?? Date()
+    }
+
     /// Returns a status indicator for tasks that need special visual treatment
     /// Used for correction states within the simplified "Inspecting" group
     var statusIndicator: TaskStatusIndicator? {
@@ -96,6 +101,43 @@ struct ChecklistItem: Identifiable, Codable {
     let image_url: String?
     var quantity_picked: Int = 0
     var is_completed: Bool = false
+
+    // Custom decoder to handle both String and Int IDs
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Try to decode ID as Int first, then as String and convert
+        if let intId = try? container.decode(Int.self, forKey: .id) {
+            self.id = intId
+        } else if let stringId = try? container.decode(String.self, forKey: .id),
+                  let intId = Int(stringId) {
+            self.id = intId
+        } else {
+            // Fallback to a hash of the string ID if conversion fails
+            let stringId = try container.decode(String.self, forKey: .id)
+            self.id = abs(stringId.hashValue)
+        }
+
+        self.sku = try container.decodeIfPresent(String.self, forKey: .sku) ?? ""
+        self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Unknown Item"
+        self.variant_title = try container.decodeIfPresent(String.self, forKey: .variant_title) ?? ""
+        self.quantity_required = try container.decodeIfPresent(Int.self, forKey: .quantity_required) ?? 1
+        self.image_url = try container.decodeIfPresent(String.self, forKey: .image_url)
+        self.quantity_picked = try container.decodeIfPresent(Int.self, forKey: .quantity_picked) ?? 0
+        self.is_completed = try container.decodeIfPresent(Bool.self, forKey: .is_completed) ?? false
+    }
+
+    // Standard initializer for manual creation
+    init(id: Int, sku: String, name: String, variant_title: String, quantity_required: Int, image_url: String? = nil, quantity_picked: Int = 0, is_completed: Bool = false) {
+        self.id = id
+        self.sku = sku
+        self.name = name
+        self.variant_title = variant_title
+        self.quantity_required = quantity_required
+        self.image_url = image_url
+        self.quantity_picked = quantity_picked
+        self.is_completed = is_completed
+    }
 }
 
 // MARK: - Grouped Tasks

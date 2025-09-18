@@ -2,14 +2,13 @@ import SwiftUI
 
 struct LoginView: View {
     @StateObject private var viewModel = StaffLoginViewModel()
-    @ObservedObject private var sessionManager = StaffSessionManager.shared
     
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 36) {
             // MARK: - App Logo & Title
             VStack(spacing: 16) {
                 // App icon
-                Image("AppIcon")
+                Image("AppIcon") // Make sure you have this image in your assets
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 100, height: 100)
@@ -26,147 +25,62 @@ struct LoginView: View {
                         .foregroundColor(.secondary)
                 }
             }
-            
+            .padding(.top)
+
             Spacer()
             
-            // MARK: - Staff Selection Section
-            VStack(spacing: 16) {
-                Text("Select Your Profile")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+            // MARK: - Login Form
+            VStack(spacing: 24) {
+                TextField("Username", text: $viewModel.username)
+                    .padding(12)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(10)
+                    .textContentType(.username)
+                    .autocapitalization(.none)
+                    .keyboardType(.emailAddress)
                 
-                Text("Choose your staff profile to start your shift and begin processing orders.")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
+                SecureField("Password", text: $viewModel.password)
+                    .padding(12)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(10)
+                    .textContentType(.password)
             }
+            .padding(.horizontal)
             
-            // MARK: - Staff List
-            VStack(spacing: 16) {
-                if viewModel.isLoading {
-                    ProgressView("Loading staff...")
-                        .frame(height: 200)
-                } else if let errorMessage = viewModel.errorMessage {
-                    VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.title)
-                            .foregroundColor(.red)
-                        
-                        Text("Unable to load staff")
-                            .font(.headline)
-                        
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                        
-                        Button("Retry") {
-                            Task {
-                                await viewModel.loadStaff()
-                            }
-                        }
-                        .buttonStyle(.bordered)
+            // MARK: - Login Button
+            // NOTE: Using a standard Button here. Replace with your 'PrimaryButton' if available.
+            Button(action: {
+                viewModel.performLogin()
+            }) {
+                HStack {
+                    Spacer()
+                    if viewModel.isLoggingIn {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Text("Login")
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
                     }
-                    .frame(height: 200)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(viewModel.staffMembers) { staff in
-                                StaffSelectionCard(
-                                    staff: staff,
-                                    isSelected: viewModel.selectedStaff?.id == staff.id,
-                                    action: {
-                                        viewModel.selectStaff(staff)
-                                    }
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-                    .frame(maxHeight: 300)
+                    Spacer()
                 }
+                .padding()
+                .background(viewModel.canLogin ? Color.primaryTeal : Color.gray)
+                .cornerRadius(50)
             }
-            
-            // MARK: - Start Shift Button
-            PrimaryButton(
-                title: "Start Shift",
-                isLoading: viewModel.isLoggingIn,
-                action: {
-                    viewModel.performLogin()
-                }
-            )
+            .frame(maxWidth: 120)
             .disabled(!viewModel.canLogin)
             .padding(.horizontal)
             
             Spacer()
+            Spacer()
         }
         .padding()
-        .task {
-            await viewModel.loadStaff()
-        }
-        .alert("Login Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-            Button("OK") {
-                viewModel.errorMessage = nil
-            }
+        .alert("Login Error", isPresented: $viewModel.showErrorAlert) {
+            Button("OK") { }
         } message: {
-            Text(viewModel.errorMessage ?? "")
+            Text(viewModel.errorMessage ?? "An unknown error occurred.")
         }
-    }
-}
-
-// MARK: - Staff Selection Card
-
-struct StaffSelectionCard: View {
-    let staff: StaffMember
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 16) {
-                // Avatar
-                Circle()
-                    .fill(isSelected ? Color.blue : Color.gray.opacity(0.3))
-                    .frame(width: 50, height: 50)
-                    .overlay {
-                        Text(String(staff.name.prefix(1).uppercased()))
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(isSelected ? .white : .primary)
-                    }
-                
-                // Staff Info
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(staff.name)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    Text("ID: \(staff.id)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                // Selection Indicator
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.blue)
-                }
-            }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.systemBackground))
-                    .stroke(
-                        isSelected ? Color.blue : Color.gray.opacity(0.3),
-                        lineWidth: isSelected ? 2 : 1
-                    )
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
     }
 }
 

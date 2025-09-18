@@ -151,12 +151,28 @@ export class AirtableService {
     private mapTaskRecord(record: any): FulfillmentTask {
         const currentOperatorArray = record.get('current_operator') as string[];
 
+        // Ensure date is properly formatted as ISO8601
+        const createdAtRaw = record.get('created_at');
+        let createdAtISO: string;
+        if (createdAtRaw) {
+            // If it's already a Date object, convert to ISO string
+            // If it's a string, try to parse and reformat to ensure ISO8601 compatibility
+            try {
+                createdAtISO = new Date(createdAtRaw).toISOString();
+            } catch (error) {
+                console.warn('Invalid date format for task', record.id, ':', createdAtRaw);
+                createdAtISO = new Date().toISOString(); // Fallback to current date
+            }
+        } else {
+            createdAtISO = new Date().toISOString(); // Fallback to current date
+        }
+
         return {
             id: record.id,
             orderName: record.get('order_name') as string || '',
             status: record.get('status') as TaskStatus || TaskStatus.PENDING,
             shippingName: record.get('shipping_name') as string || '',
-            createdAt: record.get('created_at') as string || new Date().toISOString(),
+            createdAt: createdAtISO,
             checklistJson: record.get('checklist_json') as string || '[]',
             currentOperator: currentOperatorArray && currentOperatorArray.length > 0
                 ? { id: currentOperatorArray[0], name: 'Loading...' } // We'll need to fetch name separately

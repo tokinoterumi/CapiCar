@@ -11,13 +11,13 @@ class DashboardViewModel: ObservableObject {
     @Published var errorMessage: String?
     
     // MARK: - Dependencies
-    
-    private let offlineAPIService: OfflineAPIService
-    
+
+    private let apiService: APIService
+
     // MARK: - Initialization
-    
-    init(offlineAPIService: OfflineAPIService? = nil) {
-        self.offlineAPIService = offlineAPIService ?? OfflineAPIService.shared
+
+    init(apiService: APIService? = nil) {
+        self.apiService = apiService ?? APIService.shared
     }
     
     // MARK: - Public Methods
@@ -38,18 +38,15 @@ class DashboardViewModel: ObservableObject {
         self.errorMessage = nil
         
         do {
-            // 2. Await the result directly using offline-first service
-            let fetchedGroupedTasks = try await offlineAPIService.fetchDashboardTasks()
-            
+            // 2. Await the result directly from APIService
+            let fetchedGroupedTasks = try await apiService.fetchDashboardTasks()
+
             // 3. On success, update the published property.
             self.groupedTasks = fetchedGroupedTasks
-            
+
         } catch {
             // 4. On failure, capture a user-friendly error message.
-            let isOnline = offlineAPIService.isOnline
-            self.errorMessage = isOnline 
-                ? "Failed to load tasks. Please check your connection and try again."
-                : "Working offline. Some data may be outdated."
+            self.errorMessage = "Failed to load tasks. Please check your connection and try again."
             print("Error fetching dashboard data: \(error)")
         }
         
@@ -73,7 +70,7 @@ class DashboardViewModel: ObservableObject {
                     orderName: "#1001",
                     status: .pending,
                     shippingName: "John Doe",
-                    createdAt: Date(),
+                    createdAt: Date().ISO8601Format(),
                     checklistJson: "[]",
                     currentOperator: nil
                 )
@@ -84,7 +81,7 @@ class DashboardViewModel: ObservableObject {
                     orderName: "#1002",
                     status: .picking,
                     shippingName: "Jane Smith",
-                    createdAt: Date(),
+                    createdAt: Date().ISO8601Format(),
                     checklistJson: "[]",
                     currentOperator: StaffMember(id: "s1", name: "Mike")
                 )

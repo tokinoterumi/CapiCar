@@ -2,12 +2,16 @@
 // Run with: npx ts-node test-airtable.ts
 
 import dotenv from 'dotenv';
-import { airtableService } from './src/services/airtableService';
 
 dotenv.config();
 
+import { airtableService } from './src/services/airtableService';
+
 async function testConnection() {
     console.log('Testing Airtable connection...');
+    console.log('Environment variables:');
+    console.log('AIRTABLE_PERSONAL_ACCESS_TOKEN:', process.env.AIRTABLE_PERSONAL_ACCESS_TOKEN ? '***loaded***' : 'NOT FOUND');
+    console.log('AIRTABLE_BASE_ID:', process.env.AIRTABLE_BASE_ID || 'NOT FOUND');
 
     try {
         // Test fetching tasks

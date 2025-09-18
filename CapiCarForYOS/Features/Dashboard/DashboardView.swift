@@ -1,11 +1,12 @@
 import SwiftUI
 
 struct DashboardView: View {
-    
+
     // MARK: - Properties
-    
+
     // The single source of truth for all dashboard data and logic.
-    @StateObject private var viewModel = DashboardViewModel()
+    @EnvironmentObject private var viewModel: DashboardViewModel
+    let onTaskSelected: (FulfillmentTask) -> Void
     
     // A wrapper struct to make our task sections identifiable and hashable, solving ForEach issues.
     private struct IdentifiableTaskSection: Identifiable, Hashable {
@@ -39,7 +40,7 @@ struct DashboardView: View {
                 }
             }
             .navigationTitle("CapiCar Dashboard")
-            .toolbar {
+            .toolbar(content: {
                 ToolbarItem(placement: .navigationBarLeading) {
                     // App icon in dashboard
                     Image("AppIcon")
@@ -48,11 +49,11 @@ struct DashboardView: View {
                         .frame(width: 32, height: 32)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     refreshButton
                 }
-            }
+            })
             // Navigation is now handled by TaskGroupView sheets
             // Fetch initial data when the view first appears.
             .onAppear {
@@ -90,7 +91,8 @@ struct DashboardView: View {
                 if !section.tasks.isEmpty {
                     TaskGroupView(
                         title: section.status.rawValue, // e.g., "Pending"
-                        tasks: section.tasks
+                        tasks: section.tasks,
+                        onTaskSelected: onTaskSelected
                     )
                 }
             }
@@ -159,7 +161,7 @@ struct DashboardView_Previews: PreviewProvider {
         
         let mockSyncManager = SyncManager()
         
-        return DashboardView()
+        return DashboardView(onTaskSelected: { _ in })
             .environmentObject(mockStaffManager)
             .environmentObject(mockSyncManager)
     }

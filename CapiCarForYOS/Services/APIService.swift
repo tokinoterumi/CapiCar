@@ -12,14 +12,79 @@ enum APIError: Error {
 class APIService {
     static let shared = APIService()
     
-    private let baseURL = "http://192.168.1.143:3000/api"
+    private let baseURL: String
+
+    private init() {
+        // Dynamic API URL configuration for different network environments
+        self.baseURL = APIService.buildBaseURL()
+        print("🌐 APIService initialized with base URL: \(self.baseURL)")
+    }
+
+    /// Update API base URL at runtime (useful for network changes)
+    func updateBaseURL(_ newURL: String) {
+        UserDefaults.standard.set(newURL, forKey: "api_base_url")
+        print("🔄 API base URL updated to: \(newURL)")
+        print("ℹ️  Restart app to apply changes")
+    }
+
+    /// Get current base URL
+    var currentBaseURL: String {
+        return baseURL
+    }
+
+    private static func buildBaseURL() -> String {
+        // Priority order:
+        // 1. Check for manual override in app settings
+        // 2. Try localhost for simulator
+        // 3. Auto-discover on local network
+
+        // 1. Manual override (you can set this in iOS Settings app)
+        if let manualURL = UserDefaults.standard.string(forKey: "api_base_url"), !manualURL.isEmpty {
+            return manualURL
+        }
+
+        // 2. For iOS Simulator, try localhost first
+        #if targetEnvironment(simulator)
+        return "http://localhost:3000/api"
+        #else
+        // 3. For real device, try common local network ranges
+        let commonIPs = [
+            "192.168.1.1",   // Common router IP
+            "192.168.0.1",   // Alternative router IP
+            "10.0.0.1"       // Some network setups
+        ]
+
+        // In a real app, you'd implement network discovery here
+        // For now, fallback to a configurable default
+        return "http://192.168.1.143:3000/api"  // Original as fallback
+        #endif
+    }
     
     let jsonDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        // This converts snake_case keys from the JSON (e.g., "order_name")
-        // to camelCase properties in Swift (e.g., orderName).
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        // Use ISO8601DateFormatter with fractional seconds support
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+
+            if let date = formatter.date(from: dateString) {
+                return date
+            }
+
+            // Fallback for dates without fractional seconds
+            let fallbackFormatter = ISO8601DateFormatter()
+            fallbackFormatter.formatOptions = [.withInternetDateTime]
+            if let date = fallbackFormatter.date(from: dateString) {
+                return date
+            }
+
+            throw DecodingError.dataCorruptedError(in: container,
+                debugDescription: "Unable to parse date: \(dateString)")
+        }
+
         return decoder
     }()
     
@@ -41,11 +106,12 @@ class APIService {
         
         let (data, _) = try await URLSession.shared.data(from: url)
         let response = try jsonDecoder.decode(DashboardResponse.self, from: data)
-        
-        guard response.success else {
-            throw APIError.serverError(message: "Failed to fetch dashboard data.")
+
+        guard response.success, let dashboardData = response.data else {
+            let errorMessage = response.error ?? "Failed to fetch dashboard data."
+            throw APIError.serverError(message: errorMessage)
         }
-        return response.data
+        return dashboardData
     }
     
     func fetchDashboardTasks() async throws -> GroupedTasks {
@@ -63,11 +129,12 @@ class APIService {
         
         let (data, _) = try await URLSession.shared.data(from: url)
         let response = try jsonDecoder.decode(TaskResponse.self, from: data)
-        
-        guard response.success else {
-            throw APIError.serverError(message: "Failed to fetch task \(id).")
+
+        guard response.success, let taskData = response.data else {
+            let errorMessage = response.error ?? "Failed to fetch task \(id)."
+            throw APIError.serverError(message: errorMessage)
         }
-        return response.data
+        return taskData
     }
     
     func performTaskAction(
@@ -94,11 +161,12 @@ class APIService {
         
         let (data, _) = try await URLSession.shared.data(for: request)
         let response = try jsonDecoder.decode(TaskResponse.self, from: data)
-        
-        guard response.success else {
-            throw APIError.serverError(message: "Failed to perform action \(action.rawValue).")
+
+        guard response.success, let taskData = response.data else {
+            let errorMessage = response.error ?? "Failed to perform action \(action.rawValue)."
+            throw APIError.serverError(message: errorMessage)
         }
-        return response.data
+        return taskData
     }
     
     func updateTaskChecklist(
@@ -125,11 +193,12 @@ class APIService {
         
         let (data, _) = try await URLSession.shared.data(for: request)
         let response = try jsonDecoder.decode(TaskResponse.self, from: data)
-        
-        guard response.success else {
-            throw APIError.serverError(message: "Failed to update checklist.")
+
+        guard response.success, let taskData = response.data else {
+            let errorMessage = response.error ?? "Failed to update checklist."
+            throw APIError.serverError(message: errorMessage)
         }
-        return response.data
+        return taskData
     }
     
     // MARK: - Staff API
@@ -141,11 +210,12 @@ class APIService {
         
         let (data, _) = try await URLSession.shared.data(from: url)
         let response = try jsonDecoder.decode(StaffResponse.self, from: data)
-        
-        guard response.success else {
-            throw APIError.serverError(message: "Failed to fetch staff list.")
+
+        guard response.success, let staffData = response.data else {
+            let errorMessage = response.error ?? "Failed to fetch staff list."
+            throw APIError.serverError(message: errorMessage)
         }
-        return response.data
+        return staffData
     }
     
     func checkInStaff(staffId: String, action: CheckInAction) async throws -> CheckInResult {
@@ -154,19 +224,33 @@ class APIService {
         }
         
         let requestBody = CheckInRequest(staffId: staffId, action: action)
-        
+
+        // Debug: Print what we're sending
+        print("🔍 Check-in request - staffId: \(staffId), action: \(action.rawValue)")
+
+        // Use a special encoder for check-in that doesn't convert to snake_case
+        let checkInEncoder = JSONEncoder()
+        checkInEncoder.dateEncodingStrategy = .iso8601
+        // No key conversion strategy - keep camelCase
+
+        let jsonData = try checkInEncoder.encode(requestBody)
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("🔍 Check-in JSON payload: \(jsonString)")
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try jsonEncoder.encode(requestBody)
+        request.httpBody = jsonData
         
         let (data, _) = try await URLSession.shared.data(for: request)
         let response = try jsonDecoder.decode(CheckInResponse.self, from: data)
-        
-        guard response.success else {
-            throw APIError.serverError(message: "Check-in action failed.")
+
+        guard response.success, let resultData = response.data else {
+            let errorMessage = response.error ?? "Check-in action failed."
+            throw APIError.serverError(message: errorMessage)
         }
-        return response.data
+        return resultData
     }
 }
 
@@ -194,7 +278,8 @@ struct CheckInRequest: Codable {
 // RESPONSE Models (for decoding server responses)
 struct DashboardResponse: Codable {
     let success: Bool
-    let data: DashboardData
+    let data: DashboardData?
+    let error: String?
 }
 
 struct DashboardData: Codable {
@@ -216,17 +301,20 @@ struct DashboardStats: Codable {
 
 struct TaskResponse: Codable {
     let success: Bool
-    let data: FulfillmentTask
+    let data: FulfillmentTask?
+    let error: String?
 }
 
 struct StaffResponse: Codable {
     let success: Bool
-    let data: [StaffMember]
+    let data: [StaffMember]?
+    let error: String?
 }
 
 struct CheckInResponse: Codable {
     let success: Bool
-    let data: CheckInResult
+    let data: CheckInResult?
+    let error: String?
 }
 
 struct CheckInResult: Codable {
