@@ -135,6 +135,21 @@ class InspectionViewModel: ObservableObject {
         let requiredCriteriaIds = Set(inspectionCriteria.filter { $0.isRequired }.map { $0.id })
         return requiredCriteriaIds.isSubset(of: checkedCriteria)
     }
+
+    private func updateInspectionStatus() {
+        let allRequiredCompleted = requiredCriteriaChecked
+
+        // Auto-transition based on required criteria completion state
+        if allRequiredCompleted && task.status == .inspecting {
+            // Could transition to a "ready for completion" state if needed
+            // For now, we'll just track the completion state
+        } else if !allRequiredCompleted && (task.status == .inspecting || task.status == .completed) {
+            // If criteria are unchecked and we're not actively inspecting, go back to inspecting
+            if task.status != .inspecting {
+                task.status = .inspecting
+            }
+        }
+    }
     
     var remainingCriteriaCount: Int {
         inspectionCriteria.count - checkedCriteria.count
@@ -156,16 +171,53 @@ class InspectionViewModel: ObservableObject {
         self.task = task
         self.currentOperator = currentOperator
         self.offlineAPIService = offlineAPIService ?? OfflineAPIService.shared
+
+        // Auto-start inspection when user enters InspectionView from packed state
+        if task.status == .packed {
+            Task {
+                await startInspection()
+            }
+        }
     }
     
     // MARK: - Actions
-    
+
+    func startInspection() async {
+        guard let operatorId = currentOperator?.id else {
+            errorMessage = "No active operator. Please check in on the dashboard."
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let updatedTask = try await offlineAPIService.performTaskAction(
+                taskId: task.id,
+                action: .startInspection,
+                operatorId: operatorId
+            )
+            self.task = updatedTask
+        } catch {
+            let isOnline = offlineAPIService.isOnline
+            self.errorMessage = isOnline
+                ? "Failed to start inspection. Please try again."
+                : "Action saved offline. Will sync when connection is restored."
+            print("Error starting inspection: \(error)")
+        }
+
+        isLoading = false
+    }
+
     func toggleCriteria(_ criteriaId: String, isChecked: Bool) {
         if isChecked {
             checkedCriteria.insert(criteriaId)
         } else {
             checkedCriteria.remove(criteriaId)
         }
+
+        // Update inspection status based on criteria completion
+        updateInspectionStatus()
     }
     
     func passInspection() async {

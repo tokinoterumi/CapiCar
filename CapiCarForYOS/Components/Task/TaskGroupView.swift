@@ -14,7 +14,7 @@ struct TaskGroupView: View {
         case .pending: return .orange
         case .picking: return .cyan
         case .picked: return .blue
-        case .packed, .inspecting: return .purple
+        case .packed, .inspecting, .inspected: return .purple
         case .correctionNeeded: return .red
         case .correcting: return .pink
         case .completed: return .green

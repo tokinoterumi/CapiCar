@@ -52,6 +52,13 @@ class CorrectionFlowViewModel: ObservableObject {
         self.task = task
         self.currentOperator = currentOperator
         self.offlineAPIService = offlineAPIService ?? OfflineAPIService.shared
+
+        // Auto-start correction when user enters CorrectionFlowView from correctionNeeded state
+        if task.status == .correctionNeeded {
+            Task {
+                await startCorrection()
+            }
+        }
     }
     
     // MARK: - Computed Properties

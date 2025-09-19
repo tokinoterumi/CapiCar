@@ -81,7 +81,7 @@ struct TaskPreviewSheet: View {
         case .pending: return .orange
         case .picking: return .blue
         case .picked: return .cyan
-        case .packed, .inspecting: return .purple
+        case .packed, .inspecting, .inspected: return .purple
         case .correctionNeeded: return .red
         case .correcting: return .pink
         case .completed: return .green
@@ -152,6 +152,33 @@ struct TaskPreviewSheet: View {
                             .foregroundColor(.secondary)
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 4)
+                    }
+
+                    // Start Picking button for pending/paused tasks
+                    if canStartTask && (task.status == .pending || task.status == .paused) {
+                        Divider()
+                            .padding(.vertical, 8)
+
+                        Button(action: {
+                            dismiss() // Close preview sheet
+                            showingFullWorkflow = true // Open full workflow
+                        }) {
+                            HStack {
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 14))
+                                Text("Start Picking")
+                                    .fontWeight(.semibold)
+                                Spacer()
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 12))
+                            }
+                            .foregroundColor(.blue)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             } else {
@@ -229,7 +256,7 @@ struct TaskPreviewSheet: View {
         switch task.status {
         case .pending, .paused:
             return true
-        case .picking, .picked, .packed, .inspecting, .correctionNeeded, .correcting:
+        case .picking, .picked, .packed, .inspecting, .inspected, .correctionNeeded, .correcting:
             return task.currentOperator?.id == staffManager.currentOperator?.id
         case .completed, .cancelled:
             return false
@@ -239,14 +266,12 @@ struct TaskPreviewSheet: View {
     private var primaryActionTitle: String {
         switch task.status {
         case .pending, .paused: return "Start Picking"
-        case .picking: return "Continue Picking"
         case .picked: return "Start Packing"
         case .packed: return "Start Inspection"
-        case .inspecting: return "Continue Inspection"
         case .correctionNeeded: return "Start Correction"
-        case .correcting: return "Continue Correction"
         case .completed: return "View Details"
         case .cancelled: return "View Details"
+        case .picking, .inspecting, .inspected, .correcting: return "Continue Task"
         }
     }
     
@@ -278,11 +303,49 @@ struct TaskPreviewSheet: View {
               let data = task.checklistJson.data(using: .utf8) else {
             return nil
         }
-        
+
         do {
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
-            return try decoder.decode([ChecklistItem].self, from: data)
+
+            // First, try to decode as an array directly
+            if let checklistArray = try? decoder.decode([ChecklistItem].self, from: data) {
+                return checklistArray
+            }
+
+            // If that fails, try to decode as a dictionary with nested JSON
+            if let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                // Try different possible keys
+                var itemsArray: [[String: Any]]?
+                if let items = jsonObject["checklist"] as? [[String: Any]] {
+                    itemsArray = items
+                } else if let items = jsonObject["items"] as? [[String: Any]] {
+                    itemsArray = items
+                } else if let items = jsonObject["checklist_items"] as? [[String: Any]] {
+                    itemsArray = items
+                } else if let jsonString = jsonObject["json"] as? String {
+                    // Handle nested JSON string
+                    if let nestedData = jsonString.data(using: .utf8) {
+                        do {
+                            let nestedObject = try JSONSerialization.jsonObject(with: nestedData)
+                            if let nestedArray = nestedObject as? [[String: Any]] {
+                                itemsArray = nestedArray
+                            } else if let singleItem = nestedObject as? [String: Any] {
+                                itemsArray = [singleItem]
+                            }
+                        } catch {
+                            print("Error parsing nested JSON in preview: \(error)")
+                        }
+                    }
+                }
+
+                if let items = itemsArray {
+                    let itemsData = try JSONSerialization.data(withJSONObject: items)
+                    return try decoder.decode([ChecklistItem].self, from: itemsData)
+                }
+            }
+
+            return nil
         } catch {
             print("Error parsing checklist: \(error)")
             return nil

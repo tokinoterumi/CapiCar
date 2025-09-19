@@ -137,6 +137,26 @@ router.post('/action', async (req, res) => {
                 }
                 break;
 
+            case TaskAction.COMPLETE_INSPECTION_CRITERIA:
+                // Transition to inspected state when all required criteria are met
+                updatedTask = await airtableService.updateTaskStatus(
+                    taskId,
+                    TaskStatus.INSPECTED,
+                    operatorId
+                );
+
+                if (operatorId) {
+                    await airtableService.logAction(
+                        operatorId,
+                        taskId,
+                        TaskAction.COMPLETE_INSPECTION_CRITERIA,
+                        TaskStatus.INSPECTING,
+                        TaskStatus.INSPECTED,
+                        'Completed all required inspection criteria'
+                    );
+                }
+                break;
+
             case TaskAction.COMPLETE_INSPECTION:
                 updatedTask = await airtableService.updateTaskStatus(
                     taskId,
@@ -149,7 +169,7 @@ router.post('/action', async (req, res) => {
                         operatorId,
                         taskId,
                         TaskAction.COMPLETE_INSPECTION,
-                        TaskStatus.INSPECTING,
+                        TaskStatus.INSPECTED,
                         TaskStatus.COMPLETED,
                         'Passed quality inspection'
                     );
@@ -172,11 +192,15 @@ router.post('/action', async (req, res) => {
                 );
 
                 if (operatorId) {
+                    // Get the current task to determine the previous status
+                    const currentTask = await airtableService.getTaskById(taskId);
+                    const previousStatus = currentTask?.status || TaskStatus.INSPECTING;
+
                     await airtableService.logAction(
                         operatorId,
                         taskId,
                         TaskAction.ENTER_CORRECTION,
-                        TaskStatus.INSPECTING,
+                        previousStatus,
                         TaskStatus.CORRECTION_NEEDED,
                         `Correction needed: ${payload.errorType}${payload.notes ? ' - ' + payload.notes : ''}`
                     );

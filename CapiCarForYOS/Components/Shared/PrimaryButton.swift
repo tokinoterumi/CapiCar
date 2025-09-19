@@ -52,10 +52,10 @@ struct PrimaryButtonStyle: ButtonStyle {
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(
-                    !isEnabled || isLoading ? Color.gray : // Disabled/loading state
                     isSecondary ? Color.clear : // Secondary buttons have clear background
                     (isDestructive ? Color.destructiveRed : color) // Destructive or primary fill
                 )
+                .opacity(!isEnabled || isLoading ? 0.5 : 1.0) // Use opacity instead of gray background
         )
         .overlay( // For secondary buttons, add a border
             RoundedRectangle(cornerRadius: 12)

@@ -7,6 +7,7 @@ class TaskDetailViewModel: ObservableObject {
     
     @Published var task: FulfillmentTask
     @Published var checklistItems: [ChecklistItem] = []
+    @Published var canStartPacking: Bool = false
     @Published var isLoading = false
     @Published var errorMessage: String?
     
@@ -28,8 +29,11 @@ class TaskDetailViewModel: ObservableObject {
     // This is passed in during initialization
     let currentOperator: StaffMember?
     
+    // State for inspection completion - would be updated by InspectionView when criteria change
+    @Published var canCompleteInspection: Bool = false
+
     // MARK: - Private Properties
-    
+
     private let offlineAPIService: OfflineAPIService
     
     // MARK: - Initializer
@@ -38,8 +42,16 @@ class TaskDetailViewModel: ObservableObject {
         self.task = task
         self.currentOperator = currentOperator
         self.offlineAPIService = offlineAPIService ?? OfflineAPIService.shared
-        
+
         parseChecklist(from: task.checklistJson)
+        updateCanStartPacking()
+
+        // Auto-start picking when user enters TaskDetailView from pending state
+        if task.status == .pending {
+            Task {
+                await startPicking()
+            }
+        }
     }
     
     // MARK: - Checklist Interaction Methods
@@ -47,19 +59,22 @@ class TaskDetailViewModel: ObservableObject {
     /// Increments the picked quantity for a specific checklist item.
     func incrementQuantity(for item: ChecklistItem) async {
         guard let index = checklistItems.firstIndex(where: { $0.id == item.id }) else { return }
-        
+
         var updatedItem = checklistItems[index]
         if updatedItem.quantity_picked < updatedItem.quantity_required {
             updatedItem.quantity_picked += 1
-            
+
             // If quantity matches, automatically mark as completed.
             if updatedItem.quantity_picked == updatedItem.quantity_required {
                 updatedItem.is_completed = true
             }
-            
+
             checklistItems[index] = updatedItem
         }
-        
+
+        // Update button state
+        updateCanStartPacking()
+
         // Sync checklist changes to server
         await syncChecklistToServer()
     }
@@ -67,7 +82,7 @@ class TaskDetailViewModel: ObservableObject {
     /// Decrements the picked quantity for a specific checklist item.
     func decrementQuantity(for item: ChecklistItem) async {
         guard let index = checklistItems.firstIndex(where: { $0.id == item.id }) else { return }
-        
+
         var updatedItem = checklistItems[index]
         if updatedItem.quantity_picked > 0 {
             updatedItem.quantity_picked -= 1
@@ -75,7 +90,10 @@ class TaskDetailViewModel: ObservableObject {
             updatedItem.is_completed = false
             checklistItems[index] = updatedItem
         }
-        
+
+        // Update button state
+        updateCanStartPacking()
+
         // Sync checklist changes to server
         await syncChecklistToServer()
     }
@@ -89,51 +107,60 @@ class TaskDetailViewModel: ObservableObject {
         updatedItem.is_completed.toggle()
         updatedItem.quantity_picked = updatedItem.is_completed ? 1 : 0
         checklistItems[index] = updatedItem
-        
+
+        // Update button state
+        updateCanStartPacking()
+
         // Sync checklist changes to server
         Task {
             await syncChecklistToServer()
         }
     }
-    
+
+    /// Updates the canStartPacking state based on current checklist completion
+    private func updateCanStartPacking() {
+        let allItemsCompleted = checklistItems.allSatisfy { $0.is_completed }
+        canStartPacking = allItemsCompleted
+
+        // Auto-transition between picking and picked based on completion state
+        if allItemsCompleted && task.status == .picking {
+            Task {
+                await completePicking()
+            }
+        } else if !allItemsCompleted && task.status == .picked {
+            // Transition back to picking if items are unchecked
+            task.status = .picking
+        }
+    }
+
     // MARK: - Public Computed Properties for the View
     
     var primaryActionText: String {
         switch task.status {
-        case .pending: return "Start Picking"
-        case .picking: return "Complete Picking"
+        case .picking: return "Start Packing"
         case .picked: return "Start Packing"
-        case .packed: return "Quick Inspection Pass"
-        case .inspecting: return "Quick Inspection Pass"
-        case .correctionNeeded: return "Start Correction"
+        case .inspecting: return "Complete Inspection"
         case .correcting: return "Complete Correction"
-        case .completed: return "Task Completed"
-        case .paused: return "Resume Picking"
-        case .cancelled: return "Task Cancelled"
+        case .paused: return "Resume"
+        default: return ""
         }
     }
     
     var canPerformPrimaryAction: Bool {
         guard currentOperator != nil else { return false }
-        
+
         switch task.status {
-        case .pending, .paused:
-            return true
-        case .picking:
-            // Can only complete if all items are checked off
-            return checklistItems.allSatisfy { $0.is_completed }
+        case .picking, .paused:
+            // Can only start packing if all items are picked
+            return canStartPacking
         case .picked:
             // Can start packing if weight/dimensions entered
             return !weightInput.isEmpty && !dimensionsInput.isEmpty
-        case .packed:
-            return true
-        case .inspecting:
-            return true // Can complete inspection (pass) via main button
-        case .correctionNeeded:
-            return true
+        case .inspecting, .inspected:
+            return canCompleteInspection // Can complete inspection only when criteria are met
         case .correcting:
             return true
-        case .completed, .cancelled:
+        case .pending, .packed, .correctionNeeded, .completed, .cancelled:
             return false
         }
     }
@@ -182,20 +209,21 @@ class TaskDetailViewModel: ObservableObject {
     
     func handlePrimaryAction() async {
         switch task.status {
-        case .pending, .paused:
-            await startPicking()
         case .picking:
+            // This shouldn't happen since picking auto-completes when all items are done
+            // But handle it gracefully
             await completePicking()
+            await startPacking()
         case .picked:
             await startPacking()
-        case .packed:
-            await startInspection()
         case .inspecting:
             await completeInspection()
-        case .correctionNeeded:
-            await startCorrection()
         case .correcting:
             await completeCorrection()
+        case .paused:
+            // Resume from paused state - this would need to determine what state to resume to
+            // For now, assuming it resumes picking, but this should be enhanced based on where it was paused
+            await startPicking()
         default:
             break
         }
@@ -343,13 +371,74 @@ class TaskDetailViewModel: ObservableObject {
             self.checklistItems = []
             return
         }
-        
+
+        print("DEBUG: Raw JSON string: \(jsonString)")
+
         do {
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
-            self.checklistItems = try decoder.decode([ChecklistItem].self, from: data)
+
+            // First, try to decode as an array directly
+            if let checklistArray = try? decoder.decode([ChecklistItem].self, from: data) {
+                print("DEBUG: Successfully decoded as direct array with \(checklistArray.count) items")
+                self.checklistItems = checklistArray
+                return
+            }
+
+            // If that fails, try to decode as a dictionary with a "checklist" or "items" key
+            if let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                print("DEBUG: Checklist JSON structure: \(jsonObject.keys)")
+
+                // Try different possible keys
+                var itemsArray: [[String: Any]]?
+                if let items = jsonObject["checklist"] as? [[String: Any]] {
+                    itemsArray = items
+                } else if let items = jsonObject["items"] as? [[String: Any]] {
+                    itemsArray = items
+                } else if let items = jsonObject["checklist_items"] as? [[String: Any]] {
+                    itemsArray = items
+                } else if let jsonString = jsonObject["json"] as? String {
+                    print("DEBUG: Found nested JSON string: \(jsonString)")
+                    // Handle nested JSON string
+                    if let nestedData = jsonString.data(using: .utf8) {
+                        do {
+                            let nestedObject = try JSONSerialization.jsonObject(with: nestedData)
+                            if let nestedArray = nestedObject as? [[String: Any]] {
+                                print("DEBUG: Successfully parsed nested JSON array with \(nestedArray.count) items")
+                                itemsArray = nestedArray
+                            } else if let singleItem = nestedObject as? [String: Any] {
+                                print("DEBUG: Found single item, converting to array")
+                                itemsArray = [singleItem]
+                            } else {
+                                print("DEBUG: Nested JSON is neither array nor object")
+                            }
+                        } catch {
+                            print("DEBUG: Error parsing nested JSON: \(error)")
+                        }
+                    }
+                }
+
+                if let items = itemsArray {
+                    print("DEBUG: Attempting to decode \(items.count) items")
+                    let itemsData = try JSONSerialization.data(withJSONObject: items)
+                    do {
+                        self.checklistItems = try decoder.decode([ChecklistItem].self, from: itemsData)
+                        print("DEBUG: Successfully decoded \(self.checklistItems.count) checklist items")
+                        return
+                    } catch {
+                        print("DEBUG: Error decoding ChecklistItem array: \(error)")
+                        // Don't return here, let it fall through to empty array
+                    }
+                }
+            }
+
+            // If all else fails, set empty array
+            print("DEBUG: Could not find checklist items in JSON structure")
+            self.checklistItems = []
+
         } catch {
             print("Error parsing checklist JSON: \(error)")
+            print("DEBUG: Raw JSON string: \(jsonString)")
             self.checklistItems = []
             // Only show error message in non-preview context
             #if !DEBUG

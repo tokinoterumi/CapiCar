@@ -28,6 +28,7 @@ enum TaskStatus: String, CaseIterable, Codable {
     case picked = "Picked"
     case packed = "Packed"
     case inspecting = "Inspecting"
+    case inspected = "Inspected"
     case correctionNeeded = "Correction_Needed"
     case correcting = "Correcting"
     case completed = "Completed"
@@ -82,6 +83,8 @@ extension FulfillmentTask {
             return .packed
         case .inspecting, .correctionNeeded, .correcting:
             return .inspecting
+        case .inspected:
+            return .inspected
         case .completed:
             return .completed
         case .paused:

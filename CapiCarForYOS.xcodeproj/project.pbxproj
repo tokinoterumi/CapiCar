@@ -27,6 +27,7 @@
 		0DBE72202E6EB81F00FDAE9E /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F422E668E0700ABAD27 /* APIService.swift */; };
 		0DE0C4132E7AF03B00CF7394 /* UserSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C4122E7AF03B00CF7394 /* UserSessionManager.swift */; };
 		0DE0C4152E7AF1A000CF7394 /* NetworkSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C4142E7AF1A000CF7394 /* NetworkSettingsView.swift */; };
+		0DE0C41D2E7BF33900CF7394 /* BarcodeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C41C2E7BF33900CF7394 /* BarcodeScannerView.swift */; };
 		0DE21F152E667AB400ABAD27 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F122E667AB400ABAD27 /* ContentView.swift */; };
 		0DE21F162E667AB400ABAD27 /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F132E667AB400ABAD27 /* Item.swift */; };
 		0DE21F172E667AB400ABAD27 /* CapiCar_for_YOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F112E667AB400ABAD27 /* CapiCar_for_YOSApp.swift */; };
@@ -83,6 +84,7 @@
 		0DA3157D2E79280A00817FD1 /* StaffLoginViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffLoginViewModel.swift; sourceTree = "<group>"; };
 		0DE0C4122E7AF03B00CF7394 /* UserSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserSessionManager.swift; sourceTree = "<group>"; };
 		0DE0C4142E7AF1A000CF7394 /* NetworkSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsView.swift; sourceTree = "<group>"; };
+		0DE0C41C2E7BF33900CF7394 /* BarcodeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerView.swift; sourceTree = "<group>"; };
 		0DE21EB02E666D7900ABAD27 /* CapiCarForYOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CapiCarForYOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DE21EBF2E666D7B00ABAD27 /* CapiCarForYOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CapiCarForYOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DE21EC92E666D7B00ABAD27 /* CapiCarForYOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CapiCarForYOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -289,6 +291,7 @@
 				0DA315632E78FBC000817FD1 /* CameraScannerView.swift */,
 				0DE0C4142E7AF1A000CF7394 /* NetworkSettingsView.swift */,
 				0DA315652E78FBD300817FD1 /* VisionBarcodeScanner.swift */,
+				0DE0C41C2E7BF33900CF7394 /* BarcodeScannerView.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -469,6 +472,7 @@
 				063898442E7862AF00B8B44E /* SyncManager.swift in Sources */,
 				063898452E7862AF00B8B44E /* DatabaseManager.swift in Sources */,
 				063898462E7862AF00B8B44E /* OfflineAPIService.swift in Sources */,
+				0DE0C41D2E7BF33900CF7394 /* BarcodeScannerView.swift in Sources */,
 				0DE21F262E668A9B00ABAD27 /* ChecklistItemView.swift in Sources */,
 				0DE21F2F2E668D8C00ABAD27 /* TaskGroupView.swift in Sources */,
 				0DE21F312E668DA500ABAD27 /* PrimaryButton.swift in Sources */,

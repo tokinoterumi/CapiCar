@@ -16,6 +16,9 @@ struct TaskDetailView: View {
     
     // State for inspection flow
     @State private var showingInspectionView = false
+
+    // State for barcode scanning
+    @State private var showingBarcodeScanner = false
     
     init(task: FulfillmentTask, currentOperator: StaffMember?) {
         // Initialize the StateObject with the passed-in data. This is the correct pattern.
@@ -32,9 +35,15 @@ struct TaskDetailView: View {
                 }
                 .padding()
             }
-            
+
             // --- Footer: Action Buttons and Conditional Inputs ---
             footerActionView
+        }
+        .overlay(alignment: .bottomTrailing) {
+            // Floating barcode scan button
+            if viewModel.task.status == .picking || viewModel.task.status == .pending {
+                floatingBarcodeScanButton
+            }
         }
         .navigationTitle(viewModel.task.orderName)
         .navigationBarTitleDisplayMode(.inline)
@@ -159,20 +168,77 @@ struct TaskDetailView: View {
                 }
             }
 
-            // Main action button - always prominent
-            PrimaryButton(
-                title: viewModel.primaryActionText,
-                isLoading: viewModel.isLoading,
-                isDisabled: !viewModel.canPerformPrimaryAction,
-                action: {
+            // Secondary actions for all statuses
+            HStack(spacing: 12) {
+                PrimaryButton(
+                    title: "Report Issue",
+                    isSecondary: true,
+                    isDestructive: true
+                ) {
                     Task {
-                        await viewModel.handlePrimaryAction()
+                        await viewModel.reportException(reason: "Issue reported by operator")
+                        dismiss()
                     }
                 }
-            )
+
+                // Pause is already in toolbar, but could add here if needed
+            }
+
+            // Main action button - only show when there's an action available
+            if !viewModel.primaryActionText.isEmpty {
+                PrimaryButton(
+                    title: viewModel.primaryActionText,
+                    isLoading: viewModel.isLoading,
+                    isDisabled: !viewModel.canPerformPrimaryAction,
+                    action: {
+                        Task {
+                            await viewModel.handlePrimaryAction()
+                        }
+                    }
+                )
+            }
         }
         .padding()
         .background(.regularMaterial)
+    }
+
+    private var floatingBarcodeScanButton: some View {
+        Button(action: {
+            showingBarcodeScanner = true
+        }) {
+            Image(systemName: "barcode.viewfinder")
+                .font(.title2)
+                .foregroundColor(.white)
+                .frame(width: 56, height: 56)
+                .background(Color.primaryTeal)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        }
+        .padding(.trailing, 24)
+        .padding(.bottom, 100) // Position above footer
+        .sheet(isPresented: $showingBarcodeScanner) {
+            BarcodeScannerView { scannedCode in
+                handleScannedBarcode(scannedCode)
+                showingBarcodeScanner = false
+            }
+        }
+    }
+
+    private func handleScannedBarcode(_ code: String) {
+        // Find matching item by SKU
+        if let matchingItem = viewModel.checklistItems.first(where: { $0.sku == code }) {
+            // Auto-increment the matching item
+            Task {
+                await viewModel.incrementQuantity(for: matchingItem)
+            }
+
+            // Provide haptic feedback for successful match
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+        } else {
+            // Show brief alert for no match, but don't block workflow
+            viewModel.errorMessage = "No item found with barcode: \(code)"
+        }
     }
 }
 

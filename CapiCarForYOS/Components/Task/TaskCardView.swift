@@ -14,7 +14,7 @@ struct TaskCardView: View {
         case .pending: return .orange
         case .picking: return .blue
         case .packed: return .cyan
-        case .inspecting: return .purple
+        case .inspecting, .inspected: return .purple
         case .completed: return .green
         case .cancelled: return .gray
         case .paused: return .yellow
