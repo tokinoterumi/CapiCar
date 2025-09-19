@@ -4,9 +4,10 @@ struct TaskPreviewSheet: View {
     let task: FulfillmentTask
     @EnvironmentObject private var staffManager: StaffManager
     @Environment(\.dismiss) private var dismiss
-    
+
     // Binding to control navigation to full workflow
     @Binding var showingFullWorkflow: Bool
+    @Binding var showingInspectionView: Bool
     
     var body: some View {
         NavigationStack {
@@ -154,32 +155,6 @@ struct TaskPreviewSheet: View {
                             .padding(.top, 4)
                     }
 
-                    // Start Picking button for pending/paused tasks
-                    if canStartTask && (task.status == .pending || task.status == .paused) {
-                        Divider()
-                            .padding(.vertical, 8)
-
-                        Button(action: {
-                            dismiss() // Close preview sheet
-                            showingFullWorkflow = true // Open full workflow
-                        }) {
-                            HStack {
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 14))
-                                Text("Start Picking")
-                                    .fontWeight(.semibold)
-                                Spacer()
-                                Image(systemName: "arrow.right")
-                                    .font(.system(size: 12))
-                            }
-                            .foregroundColor(.blue)
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
             } else {
                 Text("No items found")
@@ -226,13 +201,18 @@ struct TaskPreviewSheet: View {
     
     private var actionButtonSection: some View {
         VStack(spacing: 12) {
-            
             if canStartTask {
                 PrimaryButton(
                     title: primaryActionTitle,
                     action: {
                         dismiss() // Close preview sheet
-                        showingFullWorkflow = true // Trigger full workflow
+
+                        // Route to appropriate view based on task status
+                        if task.status == .packed {
+                            showingInspectionView = true // Go to InspectionView
+                        } else {
+                            showingFullWorkflow = true // Go to TaskDetailView
+                        }
                     }
                 )
                 .padding(.horizontal)
@@ -252,11 +232,13 @@ struct TaskPreviewSheet: View {
     
     private var canStartTask: Bool {
         guard staffManager.isOperatorCheckedIn else { return false }
-        
+
         switch task.status {
-        case .pending, .paused:
+        case .pending, .paused, .packed:
+            // These statuses are unassigned - any checked-in operator can start
             return true
-        case .picking, .picked, .packed, .inspecting, .inspected, .correctionNeeded, .correcting:
+        case .picking, .picked, .inspecting, .inspected, .correctionNeeded, .correcting:
+            // These statuses require operator assignment match
             return task.currentOperator?.id == staffManager.currentOperator?.id
         case .completed, .cancelled:
             return false
@@ -394,7 +376,8 @@ struct TaskPreviewSheet_Previews: PreviewProvider {
         
         return TaskPreviewSheet(
             task: mockTask,
-            showingFullWorkflow: .constant(false)
+            showingFullWorkflow: .constant(false),
+            showingInspectionView: .constant(false)
         )
         .environmentObject(mockStaffManager)
     }

@@ -183,8 +183,13 @@ class APIService {
         guard let checklistJson = String(data: checklistData, encoding: .utf8) else {
             throw APIError.unknown
         }
-        
+
+        print("DEBUG: Sending checklist update - checklistJson length: \(checklistJson.count)")
+        print("DEBUG: checklistJson preview: \(String(checklistJson.prefix(200)))...")
+
         let requestBody = UpdateChecklistRequest(checklistJson: checklistJson, operatorId: operatorId)
+
+        print("DEBUG: Request body - operatorId: \(operatorId)")
         
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"

@@ -76,6 +76,9 @@ export class AirtableService {
                     console.error('Error fetching staff record:', error);
                     // Don't fail the entire operation if staff lookup fails
                 }
+            } else {
+                // Explicitly clear the operator field when no operatorId provided
+                updateFields.current_operator = '';
             }
 
             const record = await base(TASKS_TABLE).update(taskId, updateFields);

@@ -10,12 +10,41 @@ struct ContentView: View {
     @State private var selectedTask: FulfillmentTask?
     @State private var showingTaskPreview = false
     @State private var showingFullWorkflow = false
+    @State private var showingInspectionView = false
 
     // Shared task selection handler
     private func selectTask(_ task: FulfillmentTask) {
         print("🔍 ContentView: Selected task \(task.orderName)")
-        selectedTask = task
+
+        // Always fetch fresh task data to avoid stale status
+        if let freshTask = findFreshTask(taskId: task.id) {
+            selectedTask = freshTask
+            print("🔍 ContentView: Using fresh task data with status \(freshTask.status)")
+        } else {
+            selectedTask = task
+            print("🔍 ContentView: Using passed task data with status \(task.status)")
+        }
+
         showingTaskPreview = true
+    }
+
+    // Helper to find fresh task data from the dashboard
+    private func findFreshTask(taskId: String) -> FulfillmentTask? {
+        guard let groupedTasks = dashboardViewModel.groupedTasks else {
+            return nil
+        }
+
+        let allTasks = [
+            groupedTasks.pending,
+            groupedTasks.picking,        // contains picking + picked
+            groupedTasks.packed,
+            groupedTasks.inspecting,     // contains inspecting + correctionNeeded + correcting
+            groupedTasks.completed,
+            groupedTasks.paused,
+            groupedTasks.cancelled
+        ].flatMap { $0 }
+
+        return allTasks.first { $0.id == taskId }
     }
     
     enum Tab: String, CaseIterable {
@@ -59,7 +88,8 @@ struct ContentView: View {
             if let task = selectedTask {
                 TaskPreviewSheet(
                     task: task,
-                    showingFullWorkflow: $showingFullWorkflow
+                    showingFullWorkflow: $showingFullWorkflow,
+                    showingInspectionView: $showingInspectionView
                 )
                 .environmentObject(staffManager)
                 .onAppear {
@@ -75,7 +105,14 @@ struct ContentView: View {
                     }
             }
         }
-        .fullScreenCover(isPresented: $showingFullWorkflow) {
+        .fullScreenCover(isPresented: $showingFullWorkflow, onDismiss: {
+            // Refresh dashboard data when TaskDetailView is dismissed
+            Task {
+                await dashboardViewModel.fetchDashboardData()
+            }
+            // Also dismiss the preview sheet since task status has likely changed
+            showingTaskPreview = false
+        }) {
             if let task = selectedTask {
                 ZStack(alignment: .topLeading) {
                     NavigationView {
@@ -101,6 +138,23 @@ struct ContentView: View {
                         Spacer()
                     }
                     .padding()
+                }
+            }
+        }
+        // InspectionView sheet presentation
+        .sheet(isPresented: $showingInspectionView) {
+            if let task = selectedTask {
+                InspectionView(
+                    task: task,
+                    currentOperator: staffManager.currentOperator
+                )
+                .onDisappear {
+                    // Refresh dashboard data when InspectionView is dismissed
+                    Task {
+                        await dashboardViewModel.fetchDashboardData()
+                    }
+                    // Clear selected task to prevent stale data in TaskPreviewSheet
+                    selectedTask = nil
                 }
             }
         }

@@ -104,10 +104,11 @@ router.post('/action', async (req, res) => {
                     });
                 }
 
+                // Clear operator when transitioning to packed - task becomes available for any inspector
                 updatedTask = await airtableService.updateTaskStatus(
                     task_id,
-                    TaskStatus.PACKED,
-                    operator_id
+                    TaskStatus.PACKED
+                    // No operator_id - clears the current_operator field
                 );
 
                 // Log the action

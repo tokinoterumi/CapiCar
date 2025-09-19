@@ -30,7 +30,7 @@ struct TaskDetailView: View {
             // --- Main Content: Scrollable Checklist ---
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    customerInfoSection
+                    customerInfoSection 
                     checklistSection
                 }
                 .padding()
