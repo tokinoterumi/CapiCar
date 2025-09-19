@@ -9,6 +9,11 @@ struct FulfillmentTask: Identifiable, Codable, Equatable, Hashable {
     let createdAt: String  // Temporarily using String to bypass date decoding issues
     let checklistJson: String
     var currentOperator: StaffMember?
+
+    // Exception handling fields
+    var inExceptionPool: Bool?
+    var exceptionReason: String?
+    var exceptionLoggedAt: String?
     
     // Equatable conformance for easy comparison
     static func == (lhs: FulfillmentTask, rhs: FulfillmentTask) -> Bool {
@@ -51,8 +56,18 @@ extension FulfillmentTask {
     }
 
     /// Returns a status indicator for tasks that need special visual treatment
-    /// Used for correction states within the simplified "Inspecting" group
+    /// Used for correction states and exception pool tasks
     var statusIndicator: TaskStatusIndicator? {
+        // Exception pool takes priority over other status indicators
+        if inExceptionPool == true {
+            return TaskStatusIndicator(
+                icon: "exclamationmark.circle.fill",
+                text: "Exception Reported",
+                color: "red"
+            )
+        }
+
+        // Regular status indicators
         switch status {
         case .correctionNeeded:
             return TaskStatusIndicator(
@@ -62,7 +77,7 @@ extension FulfillmentTask {
             )
         case .correcting:
             return TaskStatusIndicator(
-                icon: "wrench.fill", 
+                icon: "wrench.fill",
                 text: "Being Corrected",
                 color: "blue"
             )

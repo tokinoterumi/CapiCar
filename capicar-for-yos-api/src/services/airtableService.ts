@@ -130,6 +130,34 @@ export class AirtableService {
         }
     }
 
+    // MARK: - Exception Pool Management
+
+    async moveTaskToExceptionPool(
+        taskId: string,
+        exceptionReason: string,
+        description: string,
+        reportingOperatorId: string
+    ): Promise<void> {
+        try {
+            const now = new Date().toISOString();
+
+            await base(TASKS_TABLE).update(taskId, {
+                status: TaskStatus.PENDING,
+                in_exception_pool: true,
+                exception_reason: exceptionReason,
+                exception_logged_at: now,
+                current_operator: '', // Clear current operator
+                return_to_pending_at: now,
+                updated_at: now
+            });
+
+            console.log(`Task ${taskId} moved to exception pool with reason: ${exceptionReason}`);
+        } catch (error) {
+            console.error('Error moving task to exception pool:', error);
+            throw new Error('Failed to move task to exception pool');
+        }
+    }
+
     // MARK: - Audit Log
 
     async logAction(
@@ -141,19 +169,45 @@ export class AirtableService {
         details?: string
     ): Promise<void> {
         try {
+            // Map complex action types to simpler ones that exist in Airtable
+            const mappedActionType = this.mapActionType(actionType);
+
             await base(AUDIT_LOG_TABLE).create({
                 timestamp: new Date().toISOString(),
                 staff_id: [operatorId], // Link to Staff (linked record)
                 task_id: taskId, // Single line text
-                action_type: actionType,
+                action_type: mappedActionType,
                 old_value: oldValue || '',
                 new_value: newValue || '',
-                details: details || ''
+                details: `${actionType}: ${details || ''}`.trim() // Include original action in details
             });
         } catch (error) {
             console.error('Error logging action:', error);
             // Don't throw error for audit logging - it shouldn't break the main operation
         }
+    }
+
+    // Helper method to map action types to valid Airtable options
+    private mapActionType(actionType: string): string {
+        // Map to actual action types that exist in Airtable Audit_Log table
+        const actionMappings: { [key: string]: string } = {
+            'START_PICKING': 'Tasked_Started',
+            'COMPLETE_PICKING': 'Task_Picked',
+            'START_PACKING': 'Packing_Started',
+            'START_INSPECTION': 'Inspection_Started',
+            'COMPLETE_INSPECTION': 'Task_Inspected',
+            'ENTER_CORRECTION': 'Inspection_Failed',
+            'START_CORRECTION': 'Correction_Started',
+            'RESOLVE_CORRECTION': 'Correction_Completed',
+            'UPDATE_CHECKLIST': 'Field_Updated',
+            'REPORT_EXCEPTION': 'Exception_Logged',
+            'REPORT_ISSUE': 'Exception_Logged',
+            'CHECK_IN': 'Field_Updated',
+            'CHECK_OUT': 'Field_Updated',
+            'CANCEL_TASK': 'Task_Auto_Cancelled'
+        };
+
+        return actionMappings[actionType] || 'Field_Updated';
     }
 
     // MARK: - Helper Methods
@@ -186,7 +240,11 @@ export class AirtableService {
             checklistJson: record.get('checklist_json') as string || '[]',
             currentOperator: currentOperatorArray && currentOperatorArray.length > 0
                 ? { id: currentOperatorArray[0], name: 'Loading...' } // We'll need to fetch name separately
-                : undefined
+                : undefined,
+            // Exception handling fields
+            inExceptionPool: record.get('in_exception_pool') as boolean || false,
+            exceptionReason: record.get('exception_reason') as string || undefined,
+            exceptionLoggedAt: record.get('exception_logged_at') as string || undefined
         };
     }
 

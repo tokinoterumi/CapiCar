@@ -72,7 +72,10 @@ struct TaskCardView: View {
                                 .font(.caption2)
                                 .fontWeight(.medium)
                         }
-                        .foregroundColor(statusIndicator.color == "orange" ? .orange : .blue)
+                        .foregroundColor(
+                            statusIndicator.color == "orange" ? .orange :
+                            statusIndicator.color == "red" ? .red : .blue
+                        )
                     }
                 }
                 

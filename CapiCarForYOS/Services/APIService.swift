@@ -4,7 +4,10 @@ import Combine
 // Custom error type for more specific API failures
 enum APIError: Error {
     case badURL
+    case offline
+    case networkError
     case serverError(message: String)
+    case invalidResponse
     case decodingError(error: Error)
     case unknown
 }
@@ -257,6 +260,27 @@ class APIService {
         }
         return resultData
     }
+
+    // MARK: - Issue Reporting API
+
+    func reportIssue(reportData: IssueReportData) async throws {
+        guard let url = URL(string: "\(baseURL)/issues/report") else {
+            throw APIError.badURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try jsonEncoder.encode(reportData)
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try jsonDecoder.decode(IssueReportResponse.self, from: data)
+
+        guard response.success else {
+            let errorMessage = response.error ?? "Failed to report issue."
+            throw APIError.serverError(message: errorMessage)
+        }
+    }
 }
 
 // MARK: - API Request & Response Models
@@ -327,6 +351,11 @@ struct CheckInResult: Codable {
     let action: String
     let timestamp: String
     let message: String
+}
+
+struct IssueReportResponse: Codable {
+    let success: Bool
+    let error: String?
 }
 
 // MARK: - Enums

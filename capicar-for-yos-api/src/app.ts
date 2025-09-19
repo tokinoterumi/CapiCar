@@ -8,6 +8,7 @@ import morgan from 'morgan';
 import dashboardRoutes from './routes/dashboard';
 import taskRoutes from './routes/tasks';
 import staffRoutes from './routes/staff';
+import issueRoutes from './routes/issues';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -23,6 +24,7 @@ app.use(express.json());
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/staff', staffRoutes);
+app.use('/api/issues', issueRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

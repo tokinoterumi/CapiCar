@@ -6,6 +6,10 @@ export interface FulfillmentTask {
     createdAt: string;
     checklistJson: string;
     currentOperator?: StaffMember;
+    // Exception handling fields
+    inExceptionPool?: boolean;
+    exceptionReason?: string;
+    exceptionLoggedAt?: string;
 }
 
 export interface StaffMember {

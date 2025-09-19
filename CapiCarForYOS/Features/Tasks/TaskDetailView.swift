@@ -13,12 +13,15 @@ struct TaskDetailView: View {
     
     // State for correction flow
     @State private var showingCorrectionFlow = false
-    
+
     // State for inspection flow
     @State private var showingInspectionView = false
 
     // State for barcode scanning
     @State private var showingBarcodeScanner = false
+
+    // State for issue reporting
+    @State private var showingReportIssueView = false
     
     init(task: FulfillmentTask, currentOperator: StaffMember?) {
         // Initialize the StateObject with the passed-in data. This is the correct pattern.
@@ -86,6 +89,13 @@ struct TaskDetailView: View {
         // Inspection view sheet
         .sheet(isPresented: $showingInspectionView) {
             InspectionView(
+                task: viewModel.task,
+                currentOperator: viewModel.currentOperator
+            )
+        }
+        // Report issue view sheet
+        .sheet(isPresented: $showingReportIssueView) {
+            ReportIssueView(
                 task: viewModel.task,
                 currentOperator: viewModel.currentOperator
             )
@@ -175,10 +185,7 @@ struct TaskDetailView: View {
                     isSecondary: true,
                     isDestructive: true
                 ) {
-                    Task {
-                        await viewModel.reportException(reason: "Issue reported by operator")
-                        dismiss()
-                    }
+                    showingReportIssueView = true
                 }
 
                 // Pause is already in toolbar, but could add here if needed

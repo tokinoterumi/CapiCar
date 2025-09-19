@@ -22,7 +22,12 @@ struct TaskPreviewSheet: View {
                     
                     // MARK: - Quick Checklist Preview
                     checklistPreviewSection
-                    
+
+                    // MARK: - Exception Notes (if applicable)
+                    if task.inExceptionPool == true {
+                        exceptionNotesSection
+                    }
+
                     // MARK: - Task Status
                     taskStatusSection
                 }
@@ -198,7 +203,65 @@ struct TaskPreviewSheet: View {
         .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(12)
     }
-    
+
+    private var exceptionNotesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundColor(.red)
+                Text("⚠️ Exception Reported")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+            }
+
+            if let reason = task.exceptionReason, !reason.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Issue Type:")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+
+                    Text(formatIssueType(reason))
+                        .font(.body)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                        )
+                }
+            }
+
+            if let loggedAt = task.exceptionLoggedAt, !loggedAt.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Reported:")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+
+                    Text(formatExceptionDate(loggedAt))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Text("This task has been moved to the exception pool and requires attention before it can proceed.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .italic()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.red.opacity(0.05))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.red.opacity(0.3), lineWidth: 1.5)
+        )
+    }
+
     private var actionButtonSection: some View {
         VStack(spacing: 12) {
             if canStartTask {
@@ -279,7 +342,36 @@ struct TaskPreviewSheet: View {
     }
     
     // MARK: - Helper Methods
-    
+
+    private func formatIssueType(_ issueType: String) -> String {
+        // Convert snake_case issue types to readable format
+        let issueTypeMapping: [String: String] = [
+            "damaged_item": "Damaged Item / 商品破損",
+            "missing_item": "Missing Item / 商品不足",
+            "wrong_item": "Wrong Item / 商品違い",
+            "quality_issue": "Quality Issue / 品質問題",
+            "packaging_issue": "Packaging Issue / 梱包問題",
+            "system_error": "System Error / システムエラー",
+            "equipment_failure": "Equipment Failure / 機器故障",
+            "other": "Other / その他"
+        ]
+
+        return issueTypeMapping[issueType] ?? issueType.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    private func formatExceptionDate(_ dateString: String) -> String {
+        // Parse ISO8601 date and format it nicely
+        let isoFormatter = ISO8601DateFormatter()
+        if let date = isoFormatter.date(from: dateString) {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            formatter.locale = Locale.current
+            return formatter.string(from: date)
+        }
+        return dateString
+    }
+
     private func parseChecklistItems() -> [ChecklistItem]? {
         guard !task.checklistJson.isEmpty,
               let data = task.checklistJson.data(using: .utf8) else {

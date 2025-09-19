@@ -28,6 +28,8 @@
 		0DE0C4132E7AF03B00CF7394 /* UserSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C4122E7AF03B00CF7394 /* UserSessionManager.swift */; };
 		0DE0C4152E7AF1A000CF7394 /* NetworkSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C4142E7AF1A000CF7394 /* NetworkSettingsView.swift */; };
 		0DE0C41D2E7BF33900CF7394 /* BarcodeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C41C2E7BF33900CF7394 /* BarcodeScannerView.swift */; };
+		0DE0C41F2E7D323200CF7394 /* ReportIssueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C41E2E7D323200CF7394 /* ReportIssueView.swift */; };
+		0DE0C4212E7D323800CF7394 /* ReportIssueViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C4202E7D323800CF7394 /* ReportIssueViewModel.swift */; };
 		0DE21F152E667AB400ABAD27 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F122E667AB400ABAD27 /* ContentView.swift */; };
 		0DE21F162E667AB400ABAD27 /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F132E667AB400ABAD27 /* Item.swift */; };
 		0DE21F172E667AB400ABAD27 /* CapiCar_for_YOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F112E667AB400ABAD27 /* CapiCar_for_YOSApp.swift */; };
@@ -85,6 +87,8 @@
 		0DE0C4122E7AF03B00CF7394 /* UserSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserSessionManager.swift; sourceTree = "<group>"; };
 		0DE0C4142E7AF1A000CF7394 /* NetworkSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsView.swift; sourceTree = "<group>"; };
 		0DE0C41C2E7BF33900CF7394 /* BarcodeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerView.swift; sourceTree = "<group>"; };
+		0DE0C41E2E7D323200CF7394 /* ReportIssueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportIssueView.swift; sourceTree = "<group>"; };
+		0DE0C4202E7D323800CF7394 /* ReportIssueViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportIssueViewModel.swift; sourceTree = "<group>"; };
 		0DE21EB02E666D7900ABAD27 /* CapiCarForYOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CapiCarForYOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DE21EBF2E666D7B00ABAD27 /* CapiCarForYOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CapiCarForYOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DE21EC92E666D7B00ABAD27 /* CapiCarForYOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CapiCarForYOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -278,6 +282,8 @@
 				0DE21F382E668DD100ABAD27 /* TaskDetailViewModel.swift */,
 				0DA3155F2E78FA1000817FD1 /* InspectionView.swift */,
 				0DA315602E78FA1000817FD1 /* InspectionViewModel.swift */,
+				0DE0C41E2E7D323200CF7394 /* ReportIssueView.swift */,
+				0DE0C4202E7D323800CF7394 /* ReportIssueViewModel.swift */,
 				0DA3155B2E78F84F00817FD1 /* CorrectionFlowView.swift */,
 				0DA3155C2E78F84F00817FD1 /* CorrectionFlowViewModel.swift */,
 			);
@@ -458,7 +464,9 @@
 				0DE21F352E668DBF00ABAD27 /* DashboardViewModel.swift in Sources */,
 				063898342E78609700B8B44E /* CurrentOperatorWidget.swift in Sources */,
 				063898312E785DAA00B8B44E /* TaskPreviewSheet.swift in Sources */,
+				0DE0C41F2E7D323200CF7394 /* ReportIssueView.swift in Sources */,
 				0DE21F462E6699CE00ABAD27 /* TaskModels.swift in Sources */,
+				0DE0C4212E7D323800CF7394 /* ReportIssueViewModel.swift in Sources */,
 				0DE21F392E668DD300ABAD27 /* TaskDetailViewModel.swift in Sources */,
 				0DE0C4132E7AF03B00CF7394 /* UserSessionManager.swift in Sources */,
 				0DE21F2D2E668D8000ABAD27 /* TaskCardView.swift in Sources */,
