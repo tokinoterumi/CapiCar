@@ -122,23 +122,36 @@ class TaskDetailViewModel: ObservableObject {
         let allItemsCompleted = checklistItems.allSatisfy { $0.is_completed }
         canStartPacking = allItemsCompleted
 
-        // Auto-transition between picking and picked based on completion state
-        if allItemsCompleted && task.status == .picking {
-            Task {
-                await completePicking()
+        print("DEBUG: updateCanStartPacking - allItemsCompleted: \(allItemsCompleted), current status: \(task.status)")
+
+        // Handle state transitions based on checklist completion
+        if task.status == .pending {
+            // Pending should automatically transition to picking when user enters TaskDetailView
+            // This happens in init(), not here
+            print("DEBUG: Status is pending - should have transitioned to picking in init()")
+        } else if task.status == .picking {
+            if allItemsCompleted {
+                print("DEBUG: Transitioning from picking to picked")
+                task.status = .picked
             }
-        } else if !allItemsCompleted && task.status == .picked {
-            // Transition back to picking if items are unchecked
-            task.status = .picking
+            // If not all items completed, stay in picking
+        } else if task.status == .picked {
+            if !allItemsCompleted {
+                print("DEBUG: Transitioning from picked back to picking")
+                task.status = .picking
+            }
+            // If all items completed, stay in picked
         }
+
+        print("DEBUG: Final status: \(task.status)")
     }
 
     // MARK: - Public Computed Properties for the View
     
     var primaryActionText: String {
         switch task.status {
-        case .picking: return "Start Packing"
-        case .picked: return "Start Packing"
+        case .picking: return "" // No button when picking
+        case .picked: return "Packing Completed"
         case .inspecting: return "Complete Inspection"
         case .correcting: return "Complete Correction"
         case .paused: return "Resume"
@@ -460,10 +473,16 @@ class TaskDetailViewModel: ObservableObject {
             // Update the task with the response, but keep our local checklist items
             // since the user might still be interacting with them
             self.task = updatedTask
+
+            // Re-evaluate status after sync to ensure UI consistency
+            updateCanStartPacking()
         } catch {
             print("Error syncing checklist: \(error)")
             // Don't show error to user for checklist sync - it's background operation
             // The offline service will handle queuing for later sync
+
+            // Even if sync fails, we should re-evaluate status for UI consistency
+            updateCanStartPacking()
         }
     }
     

@@ -67,7 +67,15 @@ export class AirtableService {
             }
 
             if (operatorId) {
-                updateFields.current_operator = [operatorId]; // Airtable linked record format
+                // Get the staff record to extract the staff_id field value
+                try {
+                    const staffRecord = await base(STAFF_TABLE).find(operatorId);
+                    const staffId = staffRecord.get('staff_id') as string;
+                    updateFields.current_operator = staffId; // Use staff_id field value
+                } catch (error) {
+                    console.error('Error fetching staff record:', error);
+                    // Don't fail the entire operation if staff lookup fails
+                }
             }
 
             const record = await base(TASKS_TABLE).update(taskId, updateFields);
@@ -132,13 +140,12 @@ export class AirtableService {
         try {
             await base(AUDIT_LOG_TABLE).create({
                 timestamp: new Date().toISOString(),
-                operator_id: [operatorId],
-                task_id: [taskId],
+                staff_id: [operatorId], // Link to Staff (linked record)
+                task_id: taskId, // Single line text
                 action_type: actionType,
                 old_value: oldValue || '',
                 new_value: newValue || '',
-                details: details || '',
-                priority: 'Normal'
+                details: details || ''
             });
         } catch (error) {
             console.error('Error logging action:', error);

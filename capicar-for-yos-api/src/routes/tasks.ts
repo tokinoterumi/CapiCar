@@ -8,8 +8,8 @@ const router = express.Router();
 // Get detailed task information
 router.get('/:id', async (req, res) => {
     try {
-        const taskId = req.params.id;
-        const task = await airtableService.getTaskById(taskId);
+        const task_id = req.params.id;
+        const task = await airtableService.getTaskById(task_id);
 
         if (!task) {
             return res.status(404).json({
@@ -37,12 +37,17 @@ router.get('/:id', async (req, res) => {
 // Handle task status transitions and actions
 router.post('/action', async (req, res) => {
     try {
-        const { taskId, action, operatorId, payload } = req.body;
+        const { task_id, action, operator_id, payload } = req.body;
 
-        if (!taskId || !action) {
+        console.log('DEBUG: Task action request body:', JSON.stringify(req.body, null, 2));
+        console.log('DEBUG: task_id exists:', !!task_id);
+        console.log('DEBUG: action exists:', !!action);
+        console.log('DEBUG: operator_id exists:', !!operator_id);
+
+        if (!task_id || !action) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required fields: taskId and action'
+                error: 'Missing required fields: task_id and action'
             });
         }
 
@@ -52,16 +57,16 @@ router.post('/action', async (req, res) => {
         switch (action) {
             case TaskAction.START_PICKING:
                 updatedTask = await airtableService.updateTaskStatus(
-                    taskId,
+                    task_id,
                     TaskStatus.PICKING,
-                    operatorId
+                    operator_id
                 );
 
                 // Log the action
-                if (operatorId) {
+                if (operator_id) {
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         'START_PICKING',
                         'Pending',
                         'Picking',
@@ -72,16 +77,16 @@ router.post('/action', async (req, res) => {
 
             case TaskAction.COMPLETE_PICKING:
                 updatedTask = await airtableService.updateTaskStatus(
-                    taskId,
+                    task_id,
                     TaskStatus.PICKED,
-                    operatorId
+                    operator_id
                 );
 
                 // Log the action
-                if (operatorId) {
+                if (operator_id) {
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         TaskAction.COMPLETE_PICKING,
                         TaskStatus.PICKING,
                         TaskStatus.PICKED,
@@ -100,16 +105,16 @@ router.post('/action', async (req, res) => {
                 }
 
                 updatedTask = await airtableService.updateTaskStatus(
-                    taskId,
+                    task_id,
                     TaskStatus.PACKED,
-                    operatorId
+                    operator_id
                 );
 
                 // Log the action
-                if (operatorId) {
+                if (operator_id) {
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         TaskAction.START_PACKING,
                         TaskStatus.PICKED,
                         TaskStatus.PACKED,
@@ -120,15 +125,15 @@ router.post('/action', async (req, res) => {
 
             case TaskAction.START_INSPECTION:
                 updatedTask = await airtableService.updateTaskStatus(
-                    taskId,
+                    task_id,
                     TaskStatus.INSPECTING,
-                    operatorId
+                    operator_id
                 );
 
-                if (operatorId) {
+                if (operator_id) {
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         TaskAction.START_INSPECTION,
                         TaskStatus.PACKED,
                         TaskStatus.INSPECTING,
@@ -140,15 +145,15 @@ router.post('/action', async (req, res) => {
             case TaskAction.COMPLETE_INSPECTION_CRITERIA:
                 // Transition to inspected state when all required criteria are met
                 updatedTask = await airtableService.updateTaskStatus(
-                    taskId,
+                    task_id,
                     TaskStatus.INSPECTED,
-                    operatorId
+                    operator_id
                 );
 
-                if (operatorId) {
+                if (operator_id) {
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         TaskAction.COMPLETE_INSPECTION_CRITERIA,
                         TaskStatus.INSPECTING,
                         TaskStatus.INSPECTED,
@@ -159,15 +164,15 @@ router.post('/action', async (req, res) => {
 
             case TaskAction.COMPLETE_INSPECTION:
                 updatedTask = await airtableService.updateTaskStatus(
-                    taskId,
+                    task_id,
                     TaskStatus.COMPLETED,
-                    operatorId
+                    operator_id
                 );
 
-                if (operatorId) {
+                if (operator_id) {
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         TaskAction.COMPLETE_INSPECTION,
                         TaskStatus.INSPECTED,
                         TaskStatus.COMPLETED,
@@ -186,19 +191,19 @@ router.post('/action', async (req, res) => {
                 }
 
                 updatedTask = await airtableService.updateTaskStatus(
-                    taskId,
+                    task_id,
                     TaskStatus.CORRECTION_NEEDED,
-                    operatorId
+                    operator_id
                 );
 
-                if (operatorId) {
+                if (operator_id) {
                     // Get the current task to determine the previous status
-                    const currentTask = await airtableService.getTaskById(taskId);
+                    const currentTask = await airtableService.getTaskById(task_id);
                     const previousStatus = currentTask?.status || TaskStatus.INSPECTING;
 
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         TaskAction.ENTER_CORRECTION,
                         previousStatus,
                         TaskStatus.CORRECTION_NEEDED,
@@ -209,15 +214,15 @@ router.post('/action', async (req, res) => {
 
             case TaskAction.START_CORRECTION:
                 updatedTask = await airtableService.updateTaskStatus(
-                    taskId,
+                    task_id,
                     TaskStatus.CORRECTING,
-                    operatorId
+                    operator_id
                 );
 
-                if (operatorId) {
+                if (operator_id) {
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         TaskAction.START_CORRECTION,
                         TaskStatus.CORRECTION_NEEDED,
                         TaskStatus.CORRECTING,
@@ -231,15 +236,15 @@ router.post('/action', async (req, res) => {
                 const targetStatus = payload?.errorType === 'PICKING_ERROR' ? TaskStatus.PICKED : TaskStatus.PACKED;
                 
                 updatedTask = await airtableService.updateTaskStatus(
-                    taskId,
+                    task_id,
                     targetStatus,
-                    operatorId
+                    operator_id
                 );
 
-                if (operatorId) {
+                if (operator_id) {
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         TaskAction.RESOLVE_CORRECTION,
                         TaskStatus.CORRECTING,
                         targetStatus,
@@ -250,15 +255,15 @@ router.post('/action', async (req, res) => {
 
             case TaskAction.CANCEL_TASK:
                 updatedTask = await airtableService.updateTaskStatus(
-                    taskId,
+                    task_id,
                     TaskStatus.CANCELLED,
-                    operatorId
+                    operator_id
                 );
 
-                if (operatorId) {
+                if (operator_id) {
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         TaskAction.CANCEL_TASK,
                         '',
                         TaskStatus.CANCELLED,
@@ -276,10 +281,10 @@ router.post('/action', async (req, res) => {
                 }
 
                 // Log exception without changing status
-                if (operatorId) {
+                if (operator_id) {
                     await airtableService.logAction(
-                        operatorId,
-                        taskId,
+                        operator_id,
+                        task_id,
                         TaskAction.REPORT_EXCEPTION,
                         '',
                         '',
@@ -287,7 +292,7 @@ router.post('/action', async (req, res) => {
                     );
                 }
 
-                updatedTask = await airtableService.getTaskById(taskId);
+                updatedTask = await airtableService.getTaskById(task_id);
                 break;
 
             default:
@@ -325,17 +330,21 @@ router.post('/action', async (req, res) => {
 // Update task checklist (for barcode scanning results)
 router.put('/:id/checklist', async (req, res) => {
     try {
-        const taskId = req.params.id;
-        const { checklistJson, operatorId } = req.body;
+        const task_id = req.params.id;
+        const { checklist_json, operator_id } = req.body;
 
-        if (!checklistJson) {
+        console.log('DEBUG: Checklist update request body:', JSON.stringify(req.body, null, 2));
+        console.log('DEBUG: checklist_json exists:', !!checklist_json);
+        console.log('DEBUG: operator_id exists:', !!operator_id);
+
+        if (!checklist_json) {
             return res.status(400).json({
                 success: false,
-                error: 'checklistJson is required'
+                error: 'checklist_json is required'
             });
         }
 
-        const updatedTask = await airtableService.updateTaskChecklist(taskId, checklistJson);
+        const updatedTask = await airtableService.updateTaskChecklist(task_id, checklist_json);
 
         if (!updatedTask) {
             return res.status(404).json({
@@ -345,10 +354,10 @@ router.put('/:id/checklist', async (req, res) => {
         }
 
         // Log checklist update
-        if (operatorId) {
+        if (operator_id) {
             await airtableService.logAction(
-                operatorId,
-                taskId,
+                operator_id,
+                task_id,
                 'UPDATE_CHECKLIST',
                 '',
                 '',

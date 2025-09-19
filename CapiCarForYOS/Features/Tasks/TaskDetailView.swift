@@ -192,7 +192,15 @@ struct TaskDetailView: View {
                     isDisabled: !viewModel.canPerformPrimaryAction,
                     action: {
                         Task {
+                            // Check if this is the "Packing Completed" action before execution
+                            let shouldDismiss = viewModel.task.status == .picked && viewModel.primaryActionText == "Packing Completed"
+
                             await viewModel.handlePrimaryAction()
+
+                            // Dismiss the view after "Packing Completed" action completes
+                            if shouldDismiss {
+                                dismiss()
+                            }
                         }
                     }
                 )
