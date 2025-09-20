@@ -1,13 +1,29 @@
 import SwiftUI
 
 struct TaskPreviewSheet: View {
-    let task: FulfillmentTask
+    let initialTask: FulfillmentTask
     @EnvironmentObject private var staffManager: StaffManager
     @Environment(\.dismiss) private var dismiss
 
     // Binding to control navigation to full workflow
     @Binding var showingFullWorkflow: Bool
     @Binding var showingInspectionView: Bool
+
+    // State for current task data
+    @State private var currentTask: FulfillmentTask
+    @State private var isLoading = false
+
+    init(task: FulfillmentTask, showingFullWorkflow: Binding<Bool>, showingInspectionView: Binding<Bool>) {
+        self.initialTask = task
+        self._showingFullWorkflow = showingFullWorkflow
+        self._showingInspectionView = showingInspectionView
+        self._currentTask = State(initialValue: task)
+    }
+
+    // Use currentTask throughout the view instead of task
+    private var task: FulfillmentTask {
+        currentTask
+    }
     
     var body: some View {
         NavigationStack {
@@ -33,6 +49,11 @@ struct TaskPreviewSheet: View {
                         correctionNotesSection
                     }
 
+                    // MARK: - Work History (for completed/cancelled tasks)
+                    if task.status == .completed || task.status == .cancelled {
+                        workHistorySection
+                    }
+
                     // MARK: - Task Status
                     taskStatusSection
                 }
@@ -50,6 +71,17 @@ struct TaskPreviewSheet: View {
             
             // MARK: - Action Button
             actionButtonSection
+        }
+        .onAppear {
+            Task {
+                await fetchLatestTaskData()
+            }
+        }
+        .onChange(of: initialTask.id) { _, _ in
+            // Refresh data when a new task is passed in
+            Task {
+                await fetchLatestTaskData()
+            }
         }
     }
     
@@ -300,16 +332,58 @@ struct TaskPreviewSheet: View {
         )
     }
 
+    private var workHistorySection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundColor(.blue)
+                Text("📋 Work History")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+            }
+
+            VStack(spacing: 12) {
+                ForEach(mockWorkHistory, id: \.timestamp) { entry in
+                    WorkHistoryRow(entry: entry)
+                }
+            }
+
+            // Completion summary
+            if task.status == .completed {
+                CompletionSummaryView(task: task)
+            } else if task.status == .cancelled {
+                CancellationSummaryView(task: task)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .cornerRadius(12)
+    }
+
     private var actionButtonSection: some View {
         VStack(spacing: 12) {
             if canStartTask {
                 PrimaryButton(
                     title: primaryActionTitle,
                     action: {
-                        dismiss() // Close preview sheet
+                        Task {
+                            // If this is a paused task, resume it first
+                            if task.isPaused == true {
+                                await resumeTask()
+                            }
 
-                        // Always route to TaskDetailView for all actionable tasks
-                        showingFullWorkflow = true
+                            await MainActor.run {
+                                dismiss() // Close preview sheet
+
+                                // Navigate based on task status
+                                if shouldNavigateToInspection {
+                                    showingInspectionView = true
+                                } else {
+                                    showingFullWorkflow = true
+                                }
+                            }
+                        }
                     }
                 )
                 .padding(.horizontal)
@@ -334,6 +408,12 @@ struct TaskPreviewSheet: View {
         print("  - Current operator: \(staffManager.currentOperator?.id ?? "nil") (\(staffManager.currentOperator?.name ?? "nil"))")
         print("  - Task operator: \(task.currentOperator?.id ?? "nil") (\(task.currentOperator?.name ?? "nil"))")
 
+        // Completed and cancelled tasks don't need action buttons - they show work history instead
+        if task.status == .completed || task.status == .cancelled {
+            print("  - Result: false (completed/cancelled - no actions needed)")
+            return false
+        }
+
         guard staffManager.isOperatorCheckedIn else {
             print("  - Result: false (not checked in)")
             return false
@@ -356,9 +436,9 @@ struct TaskPreviewSheet: View {
             print("  - Result: \(result) (operator match required)")
             return result
         case .completed, .cancelled:
-            // Always show button for completed/cancelled to allow viewing details
-            print("  - Result: true (completed/cancelled)")
-            return true
+            // These are handled above - no action buttons
+            print("  - Result: false (completed/cancelled)")
+            return false
         }
     }
     
@@ -375,40 +455,186 @@ struct TaskPreviewSheet: View {
 
         switch task.status {
         case .pending: return "Start Picking"
-        case .picking: return "Continue Picking"
+        case .picking: return "View Progress"
         case .picked: return "Start Packing"
         case .packed: return "Start Inspection"
-        case .inspecting: return "Continue Inspection"
+        case .inspecting: return "View Progress"
         case .inspected: return "Complete Inspection"
         case .correctionNeeded: return "Start Correction"
-        case .correcting: return "Continue Correction"
+        case .correcting: return "View Progress"
         case .completed: return "View Details"
         case .cancelled: return "View Details"
         }
     }
     
     private var actionUnavailableReason: String {
+        // For completed/cancelled tasks, show completion summary instead of action unavailable message
+        switch task.status {
+        case .completed:
+            return "Task completed successfully. See work history below for details."
+        case .cancelled:
+            return "Task was cancelled. See work history below for details."
+        default:
+            break
+        }
+
         if !staffManager.isOperatorCheckedIn {
             return "Please check in as an operator to start working on tasks"
         }
-        
+
         switch task.status {
         case .picking, .picked, .packed, .inspecting, .correctionNeeded, .correcting:
             if task.currentOperator?.id != staffManager.currentOperator?.id {
                 return "This task is currently assigned to \(task.currentOperator?.name ?? "another operator")"
             }
-        case .completed:
-            return "This task has been completed"
-        case .cancelled:
-            return "This task has been cancelled"
         default:
             break
         }
-        
+
         return "Task cannot be started at this time"
     }
-    
+
+    private var shouldNavigateToInspection: Bool {
+        // Check if this is an inspection-related task (after resume if applicable)
+        let currentStatus = task.status
+
+        switch currentStatus {
+        case .packed, .inspecting, .inspected:
+            return true
+        default:
+            return false
+        }
+    }
+
+    // MARK: - Mock Work History Data
+
+    private var mockWorkHistory: [WorkHistoryEntry] {
+        let baseTime = task.createdAtDate
+
+        switch task.status {
+        case .completed:
+            return [
+                WorkHistoryEntry(
+                    timestamp: baseTime,
+                    action: "Task Created",
+                    operatorName: "System",
+                    icon: "plus.circle",
+                    color: .gray
+                ),
+                WorkHistoryEntry(
+                    timestamp: baseTime.addingTimeInterval(300),
+                    action: "Picking Started",
+                    operatorName: "Capybara",
+                    icon: "hand.point.up.braille",
+                    color: .blue
+                ),
+                WorkHistoryEntry(
+                    timestamp: baseTime.addingTimeInterval(900),
+                    action: "All Items Picked",
+                    operatorName: "Capybara",
+                    icon: "checkmark.circle",
+                    color: .blue
+                ),
+                WorkHistoryEntry(
+                    timestamp: baseTime.addingTimeInterval(1200),
+                    action: "Packing Completed",
+                    operatorName: "Capybara",
+                    icon: "shippingbox",
+                    color: .cyan
+                ),
+                WorkHistoryEntry(
+                    timestamp: baseTime.addingTimeInterval(1500),
+                    action: "Inspection Started",
+                    operatorName: "Caterpillar",
+                    icon: "magnifyingglass",
+                    color: .purple
+                ),
+                WorkHistoryEntry(
+                    timestamp: baseTime.addingTimeInterval(1800),
+                    action: "Inspection Passed",
+                    operatorName: "Caterpillar",
+                    icon: "checkmark.seal",
+                    color: .green
+                ),
+                WorkHistoryEntry(
+                    timestamp: baseTime.addingTimeInterval(1900),
+                    action: "Task Completed",
+                    operatorName: "Caterpillar",
+                    icon: "checkmark.circle.fill",
+                    color: .green
+                )
+            ]
+        case .cancelled:
+            return [
+                WorkHistoryEntry(
+                    timestamp: baseTime,
+                    action: "Task Created",
+                    operatorName: "System",
+                    icon: "plus.circle",
+                    color: .gray
+                ),
+                WorkHistoryEntry(
+                    timestamp: baseTime.addingTimeInterval(300),
+                    action: "Picking Started",
+                    operatorName: "Capybara",
+                    icon: "hand.point.up.braille",
+                    color: .blue
+                ),
+                WorkHistoryEntry(
+                    timestamp: baseTime.addingTimeInterval(600),
+                    action: "Exception Reported",
+                    operatorName: "Capybara",
+                    icon: "exclamationmark.triangle",
+                    color: .red
+                ),
+                WorkHistoryEntry(
+                    timestamp: baseTime.addingTimeInterval(900),
+                    action: "Task Cancelled",
+                    operatorName: "Manager",
+                    icon: "xmark.circle.fill",
+                    color: .red
+                )
+            ]
+        default:
+            return []
+        }
+    }
+
     // MARK: - Helper Methods
+
+    private func fetchLatestTaskData() async {
+        isLoading = true
+
+        do {
+            let latestTask = try await OfflineAPIService.shared.fetchTask(id: task.id)
+            currentTask = latestTask
+            print("TaskPreviewSheet: Updated to latest task data - status: \(latestTask.status), isPaused: \(latestTask.isPaused ?? false)")
+        } catch {
+            print("Error fetching latest task data: \(error)")
+        }
+
+        isLoading = false
+    }
+
+    private func resumeTask() async {
+        guard let operatorId = staffManager.currentOperator?.id else {
+            print("No current operator available for resuming task")
+            return
+        }
+
+        do {
+            let resumedTask = try await OfflineAPIService.shared.performTaskAction(
+                taskId: task.id,
+                action: .resumeTask,
+                operatorId: operatorId,
+                payload: nil
+            )
+            currentTask = resumedTask
+            print("Task resumed successfully")
+        } catch {
+            print("Error resuming task: \(error)")
+        }
+    }
 
     private func formatIssueType(_ issueType: String) -> String {
         // Convert snake_case issue types to readable format
@@ -491,6 +717,135 @@ struct TaskPreviewSheet: View {
             print("Error parsing checklist: \(error)")
             return nil
         }
+    }
+}
+
+// MARK: - Work History Data Structure
+
+struct WorkHistoryEntry {
+    let timestamp: Date
+    let action: String
+    let operatorName: String
+    let icon: String
+    let color: Color
+}
+
+// MARK: - Work History Components
+
+struct WorkHistoryRow: View {
+    let entry: WorkHistoryEntry
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Timeline indicator
+            VStack {
+                Circle()
+                    .fill(entry.color)
+                    .frame(width: 12, height: 12)
+            }
+
+            // Action icon
+            Image(systemName: entry.icon)
+                .foregroundColor(entry.color)
+                .font(.body)
+                .frame(width: 20)
+
+            // Content
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.action)
+                    .font(.body)
+                    .fontWeight(.medium)
+
+                HStack {
+                    Text(entry.operatorName)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Spacer()
+
+                    Text(entry.timestamp, style: .time)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct CompletionSummaryView: View {
+    let task: FulfillmentTask
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+
+            HStack {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundColor(.green)
+                Text("✅ Task Completed Successfully")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.green)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Final Details:")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+
+                Text("• All items picked and packed")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text("• Quality inspection passed")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text("• Ready for shipment")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.top, 8)
+    }
+}
+
+struct CancellationSummaryView: View {
+    let task: FulfillmentTask
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+
+            HStack {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.red)
+                Text("❌ Task Cancelled")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.red)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Reason:")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+
+                Text("• Exception reported during picking")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text("• Unable to fulfill order")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.top, 8)
     }
 }
 

@@ -110,6 +110,8 @@ struct ContentView: View {
             Task {
                 await dashboardViewModel.fetchDashboardData()
             }
+            // Clear selected task to force fresh data when TaskPreviewSheet is opened again
+            selectedTask = nil
             // Also dismiss the preview sheet since task status has likely changed
             showingTaskPreview = false
         }) {
@@ -125,10 +127,12 @@ struct ContentView: View {
         // InspectionView sheet presentation
         .sheet(isPresented: $showingInspectionView) {
             if let task = selectedTask {
-                InspectionView(
-                    task: task,
-                    currentOperator: staffManager.currentOperator
-                )
+                NavigationStack {
+                    InspectionView(
+                        task: task,
+                        currentOperator: staffManager.currentOperator
+                    )
+                }
                 .onDisappear {
                     // Refresh dashboard data when InspectionView is dismissed
                     Task {
