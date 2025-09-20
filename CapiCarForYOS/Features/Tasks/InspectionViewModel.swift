@@ -41,7 +41,6 @@ class InspectionViewModel: ObservableObject {
     // MARK: - Published Properties
     
     @Published var task: FulfillmentTask
-    @Published var inspectionNotes: String = ""
     @Published var checkedCriteria: Set<String> = []
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -252,7 +251,7 @@ class InspectionViewModel: ObservableObject {
                 operatorName: currentOperator?.name ?? "Unknown",
                 taskOrderName: task.orderName,
                 actionType: "INSPECTION_PASSED",
-                details: "Inspection completed successfully. Notes: \(inspectionNotes)"
+                details: "Inspection completed successfully."
             )
             
             print("✅ Inspection passed: \(auditLog)")
@@ -272,15 +271,15 @@ class InspectionViewModel: ObservableObject {
             errorMessage = "Cannot fail inspection at this time"
             return
         }
-        
+
         pendingAction = .fail
         isLoading = true
         errorMessage = nil
-        
+
         do {
             // Create inspection report
             let inspectionReport = createInspectionReport(passed: false)
-            
+
             // Enter correction mode
             let updatedTask = try await offlineAPIService.performTaskAction(
                 taskId: task.id,
@@ -288,9 +287,9 @@ class InspectionViewModel: ObservableObject {
                 operatorId: operatorId,
                 payload: inspectionReport
             )
-            
+
             self.task = updatedTask
-            
+
             // Create audit log
             let auditLog = AuditLog(
                 id: UUID().uuidString,
@@ -298,18 +297,56 @@ class InspectionViewModel: ObservableObject {
                 operatorName: currentOperator?.name ?? "Unknown",
                 taskOrderName: task.orderName,
                 actionType: "INSPECTION_FAILED",
-                details: "Inspection failed. Failed criteria: \(getFailedCriteria()). Notes: \(inspectionNotes)"
+                details: "Inspection failed. Failed criteria: \(getFailedCriteria())."
             )
-            
+
             print("❌ Inspection failed: \(auditLog)")
-            
+
         } catch {
             errorMessage = "Failed to process inspection failure: \(error.localizedDescription)"
             print("Error processing inspection failure: \(error)")
         }
-        
+
         isLoading = false
         pendingAction = nil
+    }
+
+    /// Pause the current inspection task
+    func pauseTask() async {
+        guard let operatorId = currentOperator?.id else {
+            errorMessage = "No active operator. Cannot pause task."
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let updatedTask = try await offlineAPIService.performTaskAction(
+                taskId: task.id,
+                action: .pauseTask,
+                operatorId: operatorId
+            )
+            self.task = updatedTask
+
+            // Create audit log
+            let auditLog = AuditLog(
+                id: UUID().uuidString,
+                timestamp: Date(),
+                operatorName: currentOperator?.name ?? "Unknown",
+                taskOrderName: task.orderName,
+                actionType: "TASK_PAUSED",
+                details: "Inspection paused by user. Criteria checked: \(checkedCriteria.count)/\(inspectionCriteria.count)"
+            )
+
+            print("⏸️ Inspection paused: \(auditLog)")
+
+        } catch {
+            errorMessage = "Failed to pause task: \(error.localizedDescription)"
+            print("Error pausing task: \(error)")
+        }
+
+        isLoading = false
     }
     
     // MARK: - Helper Methods
@@ -319,7 +356,6 @@ class InspectionViewModel: ObservableObject {
             "inspectionResult": passed ? "PASSED" : "FAILED",
             "inspectorId": currentOperator?.id ?? "",
             "inspectorName": currentOperator?.name ?? "",
-            "inspectionNotes": inspectionNotes,
             "checkedCriteria": Array(checkedCriteria).joined(separator: ","),
             "totalCriteria": String(inspectionCriteria.count),
             "requiredCriteriaChecked": String(requiredCriteriaChecked)
@@ -387,7 +423,6 @@ class InspectionViewModel: ObservableObject {
         • Total Criteria: \(checkedCount)/\(totalCount) checked
         • Required Criteria: \(requiredChecked)/\(requiredCount) passed
         • Inspector: \(currentOperator?.name ?? "Unknown")
-        • Notes: \(inspectionNotes.isEmpty ? "None" : inspectionNotes)
         """
     }
 }

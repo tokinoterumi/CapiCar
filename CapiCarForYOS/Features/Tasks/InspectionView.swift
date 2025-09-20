@@ -11,22 +11,19 @@ struct InspectionView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Main inspection content
-                ScrollView {
-                    VStack(spacing: 24) {
-                        inspectionHeaderSection
-                        packageInfoSection
-                        inspectionCriteriaSection
-                        inspectionNotesSection
-                    }
-                    .padding()
+        VStack(spacing: 0) {
+            // Main inspection content
+            ScrollView {
+                VStack(spacing: 24) {
+                    inspectionHeaderSection
+                    packageInfoSection
+                    inspectionCriteriaSection
                 }
-                
-                // Footer with Pass/Fail actions
-                inspectionActionsFooter
+                .padding()
             }
+
+            // Footer with Pass/Fail actions
+            inspectionActionsFooter
         }
         .navigationTitle("Quality Inspection")
         .navigationBarTitleDisplayMode(.inline)
@@ -35,6 +32,21 @@ struct InspectionView: View {
                 Button("Back") {
                     dismiss()
                 }
+            }
+
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    Task {
+                        await viewModel.pauseTask()
+                        dismiss()
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pause.circle")
+                        Text("Pause")
+                    }
+                }
+                .foregroundColor(.orange)
             }
         })
         .overlay {
@@ -128,21 +140,6 @@ struct InspectionView: View {
                     )
                 }
             }
-        }
-        .padding()
-        .background(Color(.secondarySystemGroupedBackground))
-        .cornerRadius(12)
-    }
-    
-    private var inspectionNotesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Inspection Notes")
-                .font(.headline)
-                .fontWeight(.semibold)
-            
-            TextField("Add any observations or comments...", text: $viewModel.inspectionNotes, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(3...6)
         }
         .padding()
         .background(Color(.secondarySystemGroupedBackground))
