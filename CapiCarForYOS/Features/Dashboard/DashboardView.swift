@@ -10,15 +10,15 @@ struct DashboardView: View {
     
     // A wrapper struct to make our task sections identifiable and hashable, solving ForEach issues.
     private struct IdentifiableTaskSection: Identifiable, Hashable {
-        var id: TaskStatus { status }
-        let status: TaskStatus
+        var id: DisplayStatus { displayStatus }
+        let displayStatus: DisplayStatus
         let tasks: [FulfillmentTask]
     }
-    
+
     // A computed property that transforms the ViewModel's data into an identifiable collection.
     private var identifiableTaskSections: [IdentifiableTaskSection] {
         viewModel.taskSections.map { section in
-            IdentifiableTaskSection(status: section.status, tasks: section.tasks)
+            IdentifiableTaskSection(displayStatus: section.displayStatus, tasks: section.tasks)
         }
     }
     
@@ -39,7 +39,6 @@ struct DashboardView: View {
                     mainContentView
                 }
             }
-            .navigationTitle("CapiCar Dashboard")
             .toolbar(content: {
                 ToolbarItem(placement: .navigationBarLeading) {
                     // App icon in dashboard
@@ -90,7 +89,7 @@ struct DashboardView: View {
                 // Only show the section if it has tasks.
                 if !section.tasks.isEmpty {
                     TaskGroupView(
-                        title: section.status.rawValue, // e.g., "Pending"
+                        title: section.displayStatus.rawValue, // e.g., "Pending", "Paused"
                         tasks: section.tasks,
                         onTaskSelected: onTaskSelected
                     )
@@ -164,6 +163,7 @@ struct DashboardView_Previews: PreviewProvider {
         return DashboardView(onTaskSelected: { _ in })
             .environmentObject(mockStaffManager)
             .environmentObject(mockSyncManager)
+            .environmentObject(DashboardViewModel())
     }
 }
 #endif

@@ -42,14 +42,14 @@ class OfflineAPIService {
         }
 
         // Convert local tasks to simplified grouped format (matching backend transformation)
-        let pendingTasks = localTasks.filter { $0.status == .pending }
-        let pickingTasks = localTasks.filter { $0.status == .picking || $0.status == .picked }
-        let packedTasks = localTasks.filter { $0.status == .packed }
+        let pendingTasks = localTasks.filter { $0.status == .pending && $0.isPaused != true }
+        let pickingTasks = localTasks.filter { ($0.status == .picking || $0.status == .picked) && $0.isPaused != true }
+        let packedTasks = localTasks.filter { $0.status == .packed && $0.isPaused != true }
         let inspectingTasks = localTasks.filter {
-            $0.status == .inspecting || $0.status == .correctionNeeded || $0.status == .correcting
+            ($0.status == .inspecting || $0.status == .correctionNeeded || $0.status == .correcting) && $0.isPaused != true
         }
         let completedTasks = localTasks.filter { $0.status == .completed }
-        let pausedTasks = localTasks.filter { $0.status == .paused }
+        let pausedTasks = localTasks.filter { $0.isPaused == true }
         let cancelledTasks = localTasks.filter { $0.status == .cancelled }
 
         let groupedTasks = GroupedTasks(
@@ -210,7 +210,18 @@ class OfflineAPIService {
             
         case .reportException:
             task.status = .cancelled
-            
+
+        case .pauseTask:
+            task.isPaused = true
+            task.currentOperator = nil
+
+        case .resumeTask:
+            task.isPaused = false
+            // Assign resuming operator
+            if let staffMember = try? databaseManager.fetchLocalStaff(id: operatorId) {
+                task.currentOperator = staffMember.asStaffMember
+            }
+
         case .cancelTask:
             task.status = .cancelled
         }

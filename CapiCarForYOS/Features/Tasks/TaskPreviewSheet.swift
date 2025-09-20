@@ -28,6 +28,11 @@ struct TaskPreviewSheet: View {
                         exceptionNotesSection
                     }
 
+                    // MARK: - Correction Notes (if applicable)
+                    if task.status == .correctionNeeded {
+                        correctionNotesSection
+                    }
+
                     // MARK: - Task Status
                     taskStatusSection
                 }
@@ -72,7 +77,7 @@ struct TaskPreviewSheet: View {
     }
     
     private var statusBadge: some View {
-        Text(task.status.rawValue)
+        Text(task.groupStatus.rawValue)
             .font(.caption)
             .fontWeight(.semibold)
             .foregroundColor(.white)
@@ -83,17 +88,26 @@ struct TaskPreviewSheet: View {
     }
     
     private var statusColor: Color {
+        let baseColor: Color
+
         switch task.status {
-        case .pending: return .orange
-        case .picking: return .blue
-        case .picked: return .cyan
-        case .packed, .inspecting, .inspected: return .purple
-        case .correctionNeeded: return .red
-        case .correcting: return .pink
-        case .completed: return .green
-        case .cancelled: return .gray
-        case .paused: return .yellow
+        case .pending: baseColor = .orange
+        case .picking: baseColor = .blue
+        case .picked: baseColor = .cyan
+        case .packed, .inspecting, .inspected: baseColor = .purple
+        case .correctionNeeded: baseColor = .red
+        case .correcting: baseColor = .pink
+        case .completed: baseColor = .green
+        case .cancelled: baseColor = .gray
         }
+
+        // If task is paused, make it semi-transparent to show paused state
+        // while preserving the original work status color
+        if task.isPaused == true {
+            return baseColor.opacity(0.5)
+        }
+
+        return baseColor
     }
     
     private var customerInfoSection: some View {
@@ -262,6 +276,30 @@ struct TaskPreviewSheet: View {
         )
     }
 
+    private var correctionNotesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                Text("🔧 Correction Required")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+            }
+
+            Text("This task requires corrections before it can be completed. Please address the inspection issues and make necessary adjustments.")
+                .font(.body)
+                .foregroundColor(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.orange.opacity(0.05))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1.5)
+        )
+    }
+
     private var actionButtonSection: some View {
         VStack(spacing: 12) {
             if canStartTask {
@@ -270,12 +308,8 @@ struct TaskPreviewSheet: View {
                     action: {
                         dismiss() // Close preview sheet
 
-                        // Route to appropriate view based on task status
-                        if task.status == .packed {
-                            showingInspectionView = true // Go to InspectionView
-                        } else {
-                            showingFullWorkflow = true // Go to TaskDetailView
-                        }
+                        // Always route to TaskDetailView for all actionable tasks
+                        showingFullWorkflow = true
                     }
                 )
                 .padding(.horizontal)
@@ -294,29 +328,62 @@ struct TaskPreviewSheet: View {
     // MARK: - Computed Properties
     
     private var canStartTask: Bool {
-        guard staffManager.isOperatorCheckedIn else { return false }
+        print("🔍 TaskPreviewSheet DEBUG:")
+        print("  - Task status: \(task.status.rawValue)")
+        print("  - Staff checked in: \(staffManager.isOperatorCheckedIn)")
+        print("  - Current operator: \(staffManager.currentOperator?.id ?? "nil") (\(staffManager.currentOperator?.name ?? "nil"))")
+        print("  - Task operator: \(task.currentOperator?.id ?? "nil") (\(task.currentOperator?.name ?? "nil"))")
+
+        guard staffManager.isOperatorCheckedIn else {
+            print("  - Result: false (not checked in)")
+            return false
+        }
+
+        // Handle paused tasks separately - they can be resumed by any checked-in operator
+        if task.isPaused == true {
+            print("  - Result: true (paused task)")
+            return true
+        }
 
         switch task.status {
-        case .pending, .paused, .packed:
+        case .pending, .packed, .correctionNeeded:
             // These statuses are unassigned - any checked-in operator can start
+            print("  - Result: true (unassigned status)")
             return true
-        case .picking, .picked, .inspecting, .inspected, .correctionNeeded, .correcting:
+        case .picking, .picked, .inspecting, .inspected, .correcting:
             // These statuses require operator assignment match
-            return task.currentOperator?.id == staffManager.currentOperator?.id
+            let result = task.currentOperator?.id == staffManager.currentOperator?.id
+            print("  - Result: \(result) (operator match required)")
+            return result
         case .completed, .cancelled:
-            return false
+            // Always show button for completed/cancelled to allow viewing details
+            print("  - Result: true (completed/cancelled)")
+            return true
         }
     }
     
     private var primaryActionTitle: String {
+        // Handle paused tasks first - show specific resume action based on work status
+        if task.isPaused == true {
+            switch task.status {
+            case .picking: return "Resume Picking"
+            case .inspecting: return "Resume Inspection"
+            case .correcting: return "Resume Correction"
+            default: return "Resume" // Fallback for edge cases
+            }
+        }
+
         switch task.status {
-        case .pending, .paused: return "Start Picking"
+        case .pending: return "Start Picking"
+        case .picking: return "Continue Picking"
         case .picked: return "Start Packing"
         case .packed: return "Start Inspection"
+        case .inspecting: return "Continue Inspection"
+        case .inspected: return "Complete Inspection"
         case .correctionNeeded: return "Start Correction"
+        case .correcting: return "Continue Correction"
         case .completed: return "View Details"
         case .cancelled: return "View Details"
-        case .picking, .inspecting, .inspected, .correcting: return "Continue Task"
         }
     }
     
@@ -472,6 +539,7 @@ struct TaskPreviewSheet_Previews: PreviewProvider {
             showingInspectionView: .constant(false)
         )
         .environmentObject(mockStaffManager)
+        .environmentObject(DashboardViewModel())
     }
 }
 #endif

@@ -114,30 +114,11 @@ struct ContentView: View {
             showingTaskPreview = false
         }) {
             if let task = selectedTask {
-                ZStack(alignment: .topLeading) {
-                    NavigationView {
-                        TaskDetailView(
-                            task: task,
-                            currentOperator: staffManager.currentOperator
-                        )
-                        .navigationBarHidden(true)
-                    }
-
-                    VStack {
-                        HStack {
-                            Button("Close") {
-                                showingFullWorkflow = false
-                            }
-                            .padding()
-                            .background(Color(.systemBackground))
-                            .clipShape(Circle())
-                            .shadow(radius: 2)
-
-                            Spacer()
-                        }
-                        Spacer()
-                    }
-                    .padding()
+                NavigationStack {
+                    TaskDetailView(
+                        task: task,
+                        currentOperator: staffManager.currentOperator
+                    )
                 }
             }
         }

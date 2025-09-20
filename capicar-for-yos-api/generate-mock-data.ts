@@ -130,20 +130,25 @@ async function generateMockData() {
             TaskStatus.PICKING,
             TaskStatus.PACKED,
             TaskStatus.INSPECTING,
-            TaskStatus.COMPLETED,
-            TaskStatus.PAUSED
+            TaskStatus.COMPLETED
         ];
 
         for (let i = 0; i < mockOrderNames.length; i++) {
             const status = statuses[Math.floor(Math.random() * statuses.length)];
             const createdAt = getRandomDate();
+
+            // 20% chance of creating a paused task for pausable statuses
+            const pausableStatuses = [TaskStatus.PICKING, TaskStatus.INSPECTING, TaskStatus.CORRECTING];
+            const shouldBePaused = Math.random() < 0.2 && pausableStatuses.includes(status);
+
             const taskData: any = {
                 order_name: mockOrderNames[i],
                 status: status,
                 shipping_name: mockShippingNames[i],
                 created_at: createdAt,
                 updated_at: createdAt,
-                checklist_json: generateRandomChecklist()
+                checklist_json: generateRandomChecklist(),
+                is_paused: shouldBePaused || false
             };
 
             // Add status-specific timestamps

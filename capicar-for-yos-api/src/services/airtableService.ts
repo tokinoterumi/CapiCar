@@ -25,7 +25,7 @@ export class AirtableService {
                 })
                 .all();
 
-            return records.map(record => this.mapTaskRecord(record));
+            return Promise.all(records.map(record => this.mapTaskRecord(record)));
         } catch (error) {
             console.error('Error fetching tasks:', error);
             throw new Error('Failed to fetch tasks from Airtable');
@@ -35,7 +35,7 @@ export class AirtableService {
     async getTaskById(taskId: string): Promise<FulfillmentTask | null> {
         try {
             const record = await base(TASKS_TABLE).find(taskId);
-            return this.mapTaskRecord(record);
+            return await this.mapTaskRecord(record);
         } catch (error) {
             console.error('Error fetching task:', error);
             return null;
@@ -82,10 +82,73 @@ export class AirtableService {
             }
 
             const record = await base(TASKS_TABLE).update(taskId, updateFields);
-            return this.mapTaskRecord(record);
+            return await this.mapTaskRecord(record);
         } catch (error) {
             console.error('Error updating task status:', error);
             throw new Error('Failed to update task status');
+        }
+    }
+
+    async pauseTask(taskId: string): Promise<FulfillmentTask | null> {
+        try {
+            const updateFields: any = {
+                is_paused: true,
+                current_operator: '', // Clear operator when pausing
+                updated_at: new Date().toISOString()
+            };
+
+            const record = await base(TASKS_TABLE).update(taskId, updateFields);
+            return await this.mapTaskRecord(record);
+        } catch (error) {
+            console.error('Error pausing task:', error);
+            throw new Error('Failed to pause task');
+        }
+    }
+
+    async resumeTask(taskId: string, operatorId: string): Promise<FulfillmentTask | null> {
+        try {
+            // Get current task status for audit logging
+            const currentTask = await this.getTaskById(taskId);
+            if (!currentTask) {
+                throw new Error('Task not found');
+            }
+
+            const updateFields: any = {
+                is_paused: false,
+                updated_at: new Date().toISOString()
+            };
+
+            // Assign the resuming operator
+            if (operatorId) {
+                try {
+                    const staffRecord = await base(STAFF_TABLE).find(operatorId);
+                    const staffId = staffRecord.get('staff_id') as string;
+                    updateFields.current_operator = staffId;
+                } catch (error) {
+                    console.error('Error fetching staff record:', error);
+                    // Don't fail the entire operation if staff lookup fails
+                }
+            }
+
+            const record = await base(TASKS_TABLE).update(taskId, updateFields);
+            const updatedTask = await this.mapTaskRecord(record);
+
+            // Log the resume action
+            if (operatorId && updatedTask) {
+                await this.logAction(
+                    operatorId,
+                    taskId,
+                    'RESUME_TASK',
+                    'Paused',
+                    updatedTask.status,
+                    `Task resumed from ${updatedTask.status} status`
+                );
+            }
+
+            return updatedTask;
+        } catch (error) {
+            console.error('Error resuming task:', error);
+            throw new Error('Failed to resume task');
         }
     }
 
@@ -95,7 +158,7 @@ export class AirtableService {
                 checklist_json: checklistJson,
                 updated_at: new Date().toISOString()
             });
-            return this.mapTaskRecord(record);
+            return await this.mapTaskRecord(record);
         } catch (error) {
             console.error('Error updating task checklist:', error);
             throw new Error('Failed to update task checklist');
@@ -204,6 +267,8 @@ export class AirtableService {
             'REPORT_ISSUE': 'Exception_Logged',
             'CHECK_IN': 'Field_Updated',
             'CHECK_OUT': 'Field_Updated',
+            'PAUSE_TASK': 'Task_Paused',
+            'RESUME_TASK': 'Task_Resumed',
             'CANCEL_TASK': 'Task_Auto_Cancelled'
         };
 
@@ -212,8 +277,8 @@ export class AirtableService {
 
     // MARK: - Helper Methods
 
-    private mapTaskRecord(record: any): FulfillmentTask {
-        const currentOperatorArray = record.get('current_operator') as string[];
+    private async mapTaskRecord(record: any): Promise<FulfillmentTask> {
+        const currentOperatorRaw = record.get('current_operator');
 
         // Ensure date is properly formatted as ISO8601
         const createdAtRaw = record.get('created_at');
@@ -231,6 +296,21 @@ export class AirtableService {
             createdAtISO = new Date().toISOString(); // Fallback to current date
         }
 
+        // Resolve current operator if assigned
+        let currentOperator: StaffMember | undefined = undefined;
+        if (currentOperatorRaw) {
+            let staffId: string;
+            if (Array.isArray(currentOperatorRaw)) {
+                // Handle array format (e.g., ["008"])
+                staffId = currentOperatorRaw[0];
+            } else {
+                // Handle string format (e.g., "008")
+                staffId = currentOperatorRaw;
+            }
+            currentOperator = await this.getOperatorFromStaffId(staffId);
+        }
+
+
         return {
             id: record.id,
             orderName: record.get('order_name') as string || '',
@@ -238,14 +318,38 @@ export class AirtableService {
             shippingName: record.get('shipping_name') as string || '',
             createdAt: createdAtISO,
             checklistJson: record.get('checklist_json') as string || '[]',
-            currentOperator: currentOperatorArray && currentOperatorArray.length > 0
-                ? { id: currentOperatorArray[0], name: 'Loading...' } // We'll need to fetch name separately
-                : undefined,
+            currentOperator: currentOperator,
+            // Pause state
+            isPaused: record.get('is_paused') as boolean || false,
             // Exception handling fields
             inExceptionPool: record.get('in_exception_pool') as boolean || false,
             exceptionReason: record.get('exception_reason') as string || undefined,
             exceptionLoggedAt: record.get('exception_logged_at') as string || undefined
         };
+    }
+
+    // MARK: - Helper Methods
+
+    private async getOperatorFromStaffId(staffId: string): Promise<StaffMember | undefined> {
+        try {
+            // Find staff record by staff_id field value
+            const records = await base(STAFF_TABLE)
+                .select({
+                    filterByFormula: `{staff_id} = '${staffId}'`
+                })
+                .all();
+
+            if (records.length > 0) {
+                const record = records[0];
+                return {
+                    id: record.id, // Return Airtable record ID
+                    name: record.get('name') as string
+                };
+            }
+        } catch (error) {
+            console.error('Error fetching operator from staff_id:', error);
+        }
+        return undefined;
     }
 
     // MARK: - Dashboard Helper
@@ -265,15 +369,15 @@ export class AirtableService {
         const allTasks = await this.getAllTasks();
 
         return {
-            pending: allTasks.filter(task => task.status === TaskStatus.PENDING),
-            picking: allTasks.filter(task => task.status === TaskStatus.PICKING),
-            picked: allTasks.filter(task => task.status === TaskStatus.PICKED),
-            packed: allTasks.filter(task => task.status === TaskStatus.PACKED),
-            inspecting: allTasks.filter(task => task.status === TaskStatus.INSPECTING),
-            correctionNeeded: allTasks.filter(task => task.status === TaskStatus.CORRECTION_NEEDED),
-            correcting: allTasks.filter(task => task.status === TaskStatus.CORRECTING),
+            pending: allTasks.filter(task => task.status === TaskStatus.PENDING && !task.isPaused),
+            picking: allTasks.filter(task => task.status === TaskStatus.PICKING && !task.isPaused),
+            picked: allTasks.filter(task => task.status === TaskStatus.PICKED && !task.isPaused),
+            packed: allTasks.filter(task => task.status === TaskStatus.PACKED && !task.isPaused),
+            inspecting: allTasks.filter(task => task.status === TaskStatus.INSPECTING && !task.isPaused),
+            correctionNeeded: allTasks.filter(task => task.status === TaskStatus.CORRECTION_NEEDED && !task.isPaused),
+            correcting: allTasks.filter(task => task.status === TaskStatus.CORRECTING && !task.isPaused),
             completed: allTasks.filter(task => task.status === TaskStatus.COMPLETED),
-            paused: allTasks.filter(task => task.status === TaskStatus.PAUSED),
+            paused: allTasks.filter(task => task.isPaused === true),
             cancelled: allTasks.filter(task => task.status === TaskStatus.CANCELLED)
         };
     }

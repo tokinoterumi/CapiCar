@@ -10,6 +10,9 @@ struct FulfillmentTask: Identifiable, Codable, Equatable, Hashable {
     let checklistJson: String
     var currentOperator: StaffMember?
 
+    // Pause state
+    var isPaused: Bool?
+
     // Exception handling fields
     var inExceptionPool: Bool?
     var exceptionReason: String?
@@ -28,6 +31,20 @@ struct StaffMember: Codable, Equatable, Identifiable, Hashable {
 }
 
 enum TaskStatus: String, CaseIterable, Codable {
+    case pending = "Pending"
+    case picking = "Picking"
+    case picked = "Picked"
+    case packed = "Packed"
+    case inspecting = "Inspecting"
+    case inspected = "Inspected"
+    case correctionNeeded = "Correction_Needed"
+    case correcting = "Correcting"
+    case completed = "Completed"
+    case cancelled = "Cancelled"
+}
+
+// Separate enum for display purposes that includes paused
+enum DisplayStatus: String, CaseIterable {
     case pending = "Pending"
     case picking = "Picking"
     case picked = "Picked"
@@ -88,7 +105,14 @@ extension FulfillmentTask {
     
     /// Returns the simplified group status for UI display
     /// Maps granular statuses to user-friendly groups
-    var groupStatus: TaskStatus {
+    /// Paused tasks go to paused group regardless of work status
+    var groupStatus: DisplayStatus {
+        // Paused tasks go to paused group regardless of work status
+        if isPaused == true {
+            return .paused
+        }
+
+        // Normal grouping logic for non-paused tasks
         switch status {
         case .pending:
             return .pending
@@ -99,11 +123,9 @@ extension FulfillmentTask {
         case .inspecting, .correctionNeeded, .correcting:
             return .inspecting
         case .inspected:
-            return .inspected
+            return .inspecting // Map inspected to inspecting for display
         case .completed:
             return .completed
-        case .paused:
-            return .paused
         case .cancelled:
             return .cancelled
         }

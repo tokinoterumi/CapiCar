@@ -149,12 +149,17 @@ class TaskDetailViewModel: ObservableObject {
     // MARK: - Public Computed Properties for the View
     
     var primaryActionText: String {
+        // Paused tasks should not show any primary action button
+        // Resume action should only be available from TaskPreviewSheet
+        if task.isPaused == true {
+            return ""
+        }
+
         switch task.status {
         case .picking: return "" // No button when picking
         case .picked: return "Packing Completed"
         case .inspecting: return "Complete Inspection"
         case .correcting: return "Complete Correction"
-        case .paused: return "Resume"
         default: return ""
         }
     }
@@ -162,8 +167,14 @@ class TaskDetailViewModel: ObservableObject {
     var canPerformPrimaryAction: Bool {
         guard currentOperator != nil else { return false }
 
+        // Paused tasks should not show any primary action button
+        // Resume action should only be available from TaskPreviewSheet
+        if task.isPaused == true {
+            return false
+        }
+
         switch task.status {
-        case .picking, .paused:
+        case .picking:
             // Can only start packing if all items are picked
             return canStartPacking
         case .picked:
@@ -221,6 +232,10 @@ class TaskDetailViewModel: ObservableObject {
     // MARK: - Task Actions (Happy Path & Escape Hatches)
     
     func handlePrimaryAction() async {
+        // Paused tasks should not have primary actions in TaskDetailView
+        // Resume functionality is only available from TaskPreviewSheet
+        guard task.isPaused != true else { return }
+
         switch task.status {
         case .picking:
             // This shouldn't happen since picking auto-completes when all items are done
@@ -233,10 +248,6 @@ class TaskDetailViewModel: ObservableObject {
             await completeInspection()
         case .correcting:
             await completeCorrection()
-        case .paused:
-            // Resume from paused state - this would need to determine what state to resume to
-            // For now, assuming it resumes picking, but this should be enhanced based on where it was paused
-            await startPicking()
         default:
             break
         }
@@ -337,10 +348,13 @@ class TaskDetailViewModel: ObservableObject {
     
     /// Pause task (local state change for MVP)
     func pauseTask() async {
-        // For MVP, we simulate pausing locally
-        // In production, this would call a pause API endpoint
-        self.task.status = .paused
-        print("DEBUG: Task paused locally")
+        await performTaskAction(.pauseTask)
+    }
+
+    /// Resume a paused task
+    func resumeTask() async {
+        // Use the dedicated RESUME_TASK action to let backend handle the resume logic
+        await performTaskAction(.resumeTask)
     }
     
     /// Cancel task - leads to cancelled state, freeing up operators

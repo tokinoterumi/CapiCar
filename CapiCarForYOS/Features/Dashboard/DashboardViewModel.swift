@@ -101,29 +101,29 @@ class DashboardViewModel: ObservableObject {
     
     /// Provides an ordered array of simplified task sections for the View to iterate over.
     /// Maps simplified groups to display-friendly status labels.
-    var taskSections: [(status: TaskStatus, tasks: [FulfillmentTask])] {
+    var taskSections: [(displayStatus: DisplayStatus, tasks: [FulfillmentTask])] {
         guard let groupedTasks = groupedTasks else { return [] }
-        
+
         // Define simplified section order for better UX
-        var sections: [(status: TaskStatus, tasks: [FulfillmentTask])] = []
-        
-        // Map simplified groups to representative status (for display purposes)
-        let sectionMappings: [(TaskStatus, [FulfillmentTask])] = [
+        var sections: [(displayStatus: DisplayStatus, tasks: [FulfillmentTask])] = []
+
+        // Map simplified groups to representative display status (for display purposes)
+        let sectionMappings: [(DisplayStatus, [FulfillmentTask])] = [
             (.pending, groupedTasks.pending),
             (.picking, groupedTasks.picking),       // Contains picking + picked tasks
             (.packed, groupedTasks.packed),
             (.inspecting, groupedTasks.inspecting), // Contains inspecting + correction tasks
             (.completed, groupedTasks.completed),
-            (.paused, groupedTasks.paused),
+            (.paused, groupedTasks.paused),         // Special section for paused tasks
             (.cancelled, groupedTasks.cancelled)
         ]
-        
-        for (status, tasks) in sectionMappings {
+
+        for (displayStatus, tasks) in sectionMappings {
             if !tasks.isEmpty {
-                sections.append((status: status, tasks: tasks))
+                sections.append((displayStatus: displayStatus, tasks: tasks))
             }
         }
-        
+
         return sections
     }
 }

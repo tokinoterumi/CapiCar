@@ -312,6 +312,7 @@ struct ReportIssueView_Previews: PreviewProvider {
                 currentOperator: mockStaffManager.currentOperator
             )
         }
+        .environmentObject(DashboardViewModel())
     }
 }
 #endif

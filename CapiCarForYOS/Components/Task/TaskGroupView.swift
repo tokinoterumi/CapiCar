@@ -10,6 +10,11 @@ struct TaskGroupView: View {
     
     // A private computed property to determine the group's color based on the first task.
     private var groupColor: Color {
+        // For paused groups, always use gray regardless of underlying status
+        if tasks.first?.isPaused == true {
+            return .gray
+        }
+
         switch tasks.first?.status {
         case .pending: return .orange
         case .picking: return .cyan
@@ -19,7 +24,6 @@ struct TaskGroupView: View {
         case .correcting: return .pink
         case .completed: return .green
         case .cancelled: return .gray
-        case .paused: return .yellow
         case .none: return .gray
         }
     }

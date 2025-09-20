@@ -254,6 +254,22 @@ router.post('/action', async (req, res) => {
                 }
                 break;
 
+            case TaskAction.PAUSE_TASK:
+                // Use new pause method that preserves status but sets is_paused flag
+                updatedTask = await airtableService.pauseTask(task_id);
+
+                if (operator_id && updatedTask) {
+                    await airtableService.logAction(
+                        operator_id,
+                        task_id,
+                        TaskAction.PAUSE_TASK,
+                        updatedTask.status,
+                        updatedTask.status,
+                        'Task paused by operator'
+                    );
+                }
+                break;
+
             case TaskAction.CANCEL_TASK:
                 updatedTask = await airtableService.updateTaskStatus(
                     task_id,
@@ -294,6 +310,17 @@ router.post('/action', async (req, res) => {
                 }
 
                 updatedTask = await airtableService.getTaskById(task_id);
+                break;
+
+            case TaskAction.RESUME_TASK:
+                if (!operator_id) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Operator ID is required for resuming tasks'
+                    });
+                }
+
+                updatedTask = await airtableService.resumeTask(task_id, operator_id);
                 break;
 
             default:

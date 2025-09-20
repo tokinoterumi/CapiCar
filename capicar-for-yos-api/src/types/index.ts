@@ -6,6 +6,8 @@ export interface FulfillmentTask {
     createdAt: string;
     checklistJson: string;
     currentOperator?: StaffMember;
+    // Pause state
+    isPaused?: boolean;
     // Exception handling fields
     inExceptionPool?: boolean;
     exceptionReason?: string;
@@ -27,7 +29,6 @@ export enum TaskStatus {
     CORRECTION_NEEDED = 'Correction_Needed',
     CORRECTING = 'Correcting',
     COMPLETED = 'Completed',
-    PAUSED = 'Paused',
     CANCELLED = 'Cancelled'
 }
 
@@ -42,6 +43,8 @@ export enum TaskAction {
     START_CORRECTION = 'START_CORRECTION',
     RESOLVE_CORRECTION = 'RESOLVE_CORRECTION',
     REPORT_EXCEPTION = 'REPORT_EXCEPTION',
+    PAUSE_TASK = 'PAUSE_TASK',
+    RESUME_TASK = 'RESUME_TASK',
     CANCEL_TASK = 'CANCEL_TASK'
 }
 

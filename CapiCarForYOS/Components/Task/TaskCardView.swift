@@ -10,18 +10,39 @@ struct TaskCardView: View {
     
     // Private computed property to determine the status color based on simplified groups
     private var statusColor: Color {
+        let baseColor: Color
+
         switch task.groupStatus {
-        case .pending: return .orange
-        case .picking: return .blue
-        case .packed: return .cyan
-        case .inspecting, .inspected: return .purple
-        case .completed: return .green
-        case .cancelled: return .gray
-        case .paused: return .yellow
+        case .pending: baseColor = .orange
+        case .picking: baseColor = .blue
+        case .packed: baseColor = .cyan
+        case .inspecting, .inspected: baseColor = .purple
+        case .completed: baseColor = .green
+        case .cancelled: baseColor = .gray
+        case .paused:
+            // For paused tasks, get the base color from actual work status
+            switch task.status {
+            case .pending: baseColor = .orange
+            case .picking: baseColor = .blue
+            case .picked: baseColor = .cyan
+            case .packed, .inspecting, .inspected: baseColor = .purple
+            case .correctionNeeded: baseColor = .red
+            case .correcting: baseColor = .pink
+            case .completed: baseColor = .green
+            case .cancelled: baseColor = .gray
+            }
         case .picked, .correctionNeeded, .correcting:
             // groupStatus should map these to other cases, but including for safety
-            return .purple
+            baseColor = .purple
         }
+
+        // If task is paused, make the color semi-transparent to show paused state
+        // while preserving the original work status color
+        if task.isPaused == true {
+            return baseColor.opacity(0.5)
+        }
+
+        return baseColor
     }
     
     var body: some View {
@@ -109,9 +130,9 @@ extension FulfillmentTask {
     )
     
     static let previewPaused = FulfillmentTask(
-        id: "2", orderName: "#YM1026", status: .paused,
+        id: "2", orderName: "#YM1026", status: .picking,
         shippingName: "Yui Takahashi", createdAt: Date().addingTimeInterval(-7200).ISO8601Format(),
-        checklistJson: "[]", currentOperator: .previewTanaka
+        checklistJson: "[]", currentOperator: .previewTanaka, isPaused: true
     )
     
     static let previewCompleted = FulfillmentTask(

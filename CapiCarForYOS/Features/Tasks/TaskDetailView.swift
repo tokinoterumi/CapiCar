@@ -27,7 +27,21 @@ struct TaskDetailView: View {
         // Initialize the StateObject with the passed-in data. This is the correct pattern.
         _viewModel = StateObject(wrappedValue: TaskDetailViewModel(task: task, currentOperator: currentOperator))
     }
-    
+
+    // Only show pause button for active work statuses that can actually be paused
+    private var canShowPauseButton: Bool {
+        // Don't show pause button if task is already paused
+        guard viewModel.task.isPaused != true else { return false }
+
+        // Only show for active work statuses
+        switch viewModel.task.status {
+        case .picking, .inspecting, .correcting:
+            return true
+        default:
+            return false
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // --- Main Content: Scrollable Checklist ---
@@ -51,16 +65,23 @@ struct TaskDetailView: View {
         .navigationTitle(viewModel.task.orderName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(content: {
-            // Toolbar button for the "Pause" escape hatch.
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Pause") {
-                    Task {
-                        await viewModel.pauseTask()
-                        // After pausing, dismiss the view to return to the dashboard.
-                        dismiss()
+            // Toolbar button for the "Pause" escape hatch - only show for active work statuses
+            if canShowPauseButton {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        Task {
+                            await viewModel.pauseTask()
+                            // After pausing, dismiss the view to return to the dashboard.
+                            dismiss()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "pause.circle")
+                            Text("Pause")
+                        }
                     }
+                    .disabled(viewModel.isLoading)
                 }
-                .disabled(viewModel.isLoading)
             }
         })
         .overlay {

@@ -370,6 +370,8 @@ enum TaskAction: String, Codable, CaseIterable {
     case startCorrection = "START_CORRECTION"
     case resolveCorrection = "RESOLVE_CORRECTION"
     case reportException = "REPORT_EXCEPTION"
+    case pauseTask = "PAUSE_TASK"
+    case resumeTask = "RESUME_TASK"
     case cancelTask = "CANCEL_TASK"
 }
 
