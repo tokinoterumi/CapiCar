@@ -1,393 +1,364 @@
 import Foundation
 import Network
-import Combine
+import BackgroundTasks
 
+// MARK: - API Payload Models for Sync
+
+/// Payload for updating task status and checklist on the server
+struct UpdateTaskPayload: Codable {
+    let id: String
+    let status: String
+    let lastModified: Date
+    let checklist: [ChecklistItemPayload]
+}
+
+/// Individual checklist item payload for sync
+struct ChecklistItemPayload: Codable {
+    let id: String
+    let sku: String
+    let status: String
+    let scannedAt: Date?
+}
+
+/// 管理本地資料與遠端伺服器之間的同步。
+/// 這是 Offline-First 策略的核心協調者。
 @MainActor
 class SyncManager: ObservableObject {
+    /// 全局共享的單例實例。
+    static let shared = SyncManager()
     
-    @Published var isOnline: Bool = true
-    @Published var isSyncing: Bool = false
-    @Published var lastSyncDate: Date?
-    @Published var pendingChangesCount: Int = 0
-    @Published var syncError: String?
+    // MARK: - Published Properties for UI
     
-    // Lazy initialization to avoid timing issues
-    private lazy var databaseManager = DatabaseManager.shared
-    private lazy var apiService = APIService.shared
+    @Published private(set) var isOnline: Bool = true
+    @Published private(set) var isSyncing: Bool = false
+    @Published private(set) var lastSyncTime: Date?
+    @Published private(set) var lastSyncError: String?
+    @Published private(set) var pendingChangesCount: Int = 0
+    @Published private(set) var isReady: Bool = true
+
+    // MARK: - Private Properties
+    
+    private let databaseManager = DatabaseManager.shared
+    private let apiService = APIService.shared
     private let networkMonitor = NWPathMonitor()
-    private let syncQueue = DispatchQueue(label: "sync.queue", qos: .background)
-    
-    private var cancellables = Set<AnyCancellable>()
-    private var syncTimer: Timer?
-    private var isInitialized = false
-    
-    // Sync configuration
-    private let syncInterval: TimeInterval = 30.0 // 30 seconds
-    private let maxRetryAttempts = 3
-    private let retryDelay: TimeInterval = 5.0
-    
-    init() {
-        // Defer initialization to avoid crashes
-        Task {
-            await initializeAsync()
-        }
-    }
-    
-    private func initializeAsync() async {
-        guard !isInitialized else { return }
-        
+    private let backgroundTaskIdentifier = "com.capicar.app.backgroundSync" // 應與 Info.plist 中的設定一致
+
+    /// 私有化初始化方法，確保單例模式。
+    private init() {
+        print("🔥 SYNCMANAGER: Initializing SyncManager")
         setupNetworkMonitoring()
-        setupPeriodicSync()
-        await updatePendingChangesCount()
-        
-        // Set up the connection with OfflineAPIService
-        OfflineAPIService.shared.setSyncManager(self)
-        
-        isInitialized = true
+        // Auto-start network monitoring
+        start()
+        print("🔥 SYNCMANAGER: SyncManager initialized with isOnline = \(isOnline)")
+    }
+
+    // MARK: - Public Methods
+
+    /// 啟動同步管理器，開始監聽網路變化。
+    func start() {
+        print("🔥 SYNCMANAGER: Starting network monitor")
+        networkMonitor.start(queue: DispatchQueue(label: "NetworkMonitor"))
+        scheduleAppRefresh() // 嘗試在啟動時安排一次背景任務
+        print("🔥 SYNCMANAGER: Network monitor started")
     }
     
-    deinit {
-        networkMonitor.cancel()
-        syncTimer?.invalidate()
+    /// 手動觸發一次同步流程。
+    func triggerSync() async {
+        await performSync()
     }
-    
-    // MARK: - Network Monitoring
-    
-    private func setupNetworkMonitoring() {
-        networkMonitor.pathUpdateHandler = { [weak self] path in
-            DispatchQueue.main.async {
-                let wasOnline = self?.isOnline ?? false
-                self?.isOnline = path.status == .satisfied
-                
-                // Trigger sync when coming back online
-                if !wasOnline && path.status == .satisfied {
-                    Task { @MainActor [weak self] in
-                        await self?.performFullSync()
-                    }
-                }
-                
-                // Update database sync state
-                Task { [weak self] in
-                    try? self?.databaseManager.updateSyncState(isOnline: path.status == .satisfied)
-                }
-            }
-        }
-        
-        let queue = DispatchQueue(label: "NetworkMonitor")
-        networkMonitor.start(queue: queue)
+
+    /// Temporarily suppress sync operations to prevent sync flood during bulk operations
+    func suppressSyncTemporarily() {
+        // This can be implemented if needed for bulk operations
+        // For now, it's a no-op since our sync manager is designed to handle concurrent operations
+        print("🔇 Sync temporarily suppressed (no-op in current implementation)")
     }
-    
-    // MARK: - Periodic Sync
-    
-    private func setupPeriodicSync() {
-        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            
-            Task { @MainActor in
-                guard self.isOnline, !self.isSyncing else { return }
-                await self.performFullSync()
-            }
-        }
-    }
-    
-    // MARK: - Public Sync Methods
-    
-    var isReady: Bool {
-        return isInitialized
-    }
-    
+
+    /// Force sync now - alias for triggerSync for UI compatibility
     func forceSyncNow() async {
-        await performFullSync()
+        await triggerSync()
+    }
+
+    /// Queue a task action for offline sync
+    func performTaskActionOffline(
+        taskId: String,
+        action: String,
+        operatorId: String,
+        payload: [String: String]?
+    ) async throws {
+        // Mark the task as pending sync
+        try databaseManager.updateTaskSyncStatus(taskId: taskId, syncStatus: .pendingSync)
+
+        // Update pending changes count
+        pendingChangesCount = try databaseManager.fetchTasksPendingSync().count
+
+        // Trigger sync when convenient (not blocking)
+        Task {
+            await performSync()
+        }
+    }
+
+    /// Save checklist items for offline sync
+    func saveChecklistOffline(_ checklist: [ChecklistItem], forTaskId taskId: String) async throws {
+        // Mark the task as pending sync
+        try databaseManager.updateTaskSyncStatus(taskId: taskId, syncStatus: .pendingSync)
+
+        // Update pending changes count
+        pendingChangesCount = try databaseManager.fetchTasksPendingSync().count
+
+        // Trigger sync when convenient (not blocking)
+        Task {
+            await performSync()
+        }
+    }
+
+    // MARK: - Computed Properties for UI Compatibility
+
+    /// Sync error for UI display (alias for lastSyncError)
+    var syncError: String? {
+        lastSyncError
+    }
+
+    /// Last sync date for UI compatibility (alias for lastSyncTime)
+    var lastSyncDate: Date? {
+        lastSyncTime
+    }
+
+    // MARK: - Background Task Handling
+
+    /// 向 iOS 系統註冊背景任務。
+    /// 應在 App 啟動時 (例如在 App 主體中使用 `.onAppear` 或 `init`) 呼叫。
+    func registerBackgroundTask() {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIdentifier, using: nil) { task in
+            self.handleAppRefresh(task: task as! BGAppRefreshTask)
+        }
     }
     
-    func performFullSync() async {
-        guard isInitialized && isOnline && !isSyncing else { return }
+    /// 安排下一次的背景 App 刷新任務。
+    func scheduleAppRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: backgroundTaskIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 至少 15 分鐘後執行
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            print("背景同步任務已成功排程。")
+        } catch {
+            print("無法排程背景同步任務: \(error)")
+        }
+    }
+
+    // MARK: - Core Sync Logic
+
+    /// 執行同步的核心函式。
+    private func performSync() async {
+        // 防止重複同步
+        guard !isSyncing else {
+            print("同步已在進行中，跳過此次觸發。")
+            return
+        }
         
+        // 必須在線才能同步
+        guard isOnline else {
+            print("設備處於離線狀態，無法執行同步。")
+            return
+        }
+
         isSyncing = true
-        syncError = nil
+        lastSyncError = nil
         
         do {
-            // 1. Push local changes to server
-            try await pushLocalChanges()
+            let tasksToSync = try databaseManager.fetchTasksPendingSync()
+            pendingChangesCount = tasksToSync.count
+
+            if tasksToSync.isEmpty {
+                print("沒有需要同步的任務。")
+            } else {
+                print("發現 \(tasksToSync.count) 個任務需要同步...")
+                
+                // 使用 TaskGroup 來並行處理多個任務的上傳
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for task in tasksToSync {
+                        group.addTask {
+                            try await self.syncTask(task)
+                        }
+                    }
+                    // 等待所有任務完成
+                    try await group.waitForAll()
+                }
+            }
             
-            // 2. Pull latest data from server
-            try await pullServerData()
-            
-            // 3. Update sync state
-            try databaseManager.updateSyncState(
-                lastFullSync: Date(),
-                pendingCount: 0
-            )
-            
-            lastSyncDate = Date()
-            await updatePendingChangesCount()
-            
-            print("✅ Full sync completed successfully")
-            
+            lastSyncTime = Date()
+            pendingChangesCount = 0
+            print("同步成功完成。")
+
         } catch {
-            syncError = "Sync failed: \(error.localizedDescription)"
-            print("❌ Sync failed: \(error)")
-            
-            try? databaseManager.updateSyncState(
-                errorMessage: error.localizedDescription
-            )
+            lastSyncError = "同步失敗: \(error.localizedDescription)"
+            print(lastSyncError!)
         }
-        
+
         isSyncing = false
     }
     
-    // MARK: - Push Local Changes
-    
-    private func pushLocalChanges() async throws {
-        print("📤 Pushing local changes to server...")
+    // MARK: - Private Helper Methods
+
+    /// 處理單個任務的同步。
+    /// - Parameter localTask: 從本地資料庫取出的 `LocalTask` 物件。
+    private func syncTask(_ localTask: LocalTask) async throws {
+        print("正在同步任務: \(localTask.name) (ID: \(localTask.id))，狀態為: \(localTask.status.rawValue)")
         
-        // Push task changes
-        let tasksToSync = try databaseManager.getTasksNeedingSync()
-        for task in tasksToSync {
-            try await syncTaskToServer(task)
-        }
+        // 1. 將本地模型轉換為 API Payload
+        let payload = try createPayload(from: localTask)
+
+        // 2. 呼叫 API 服務 (convert payload to appropriate API calls)
+        try await syncTaskToAPI(localTask, using: payload)
         
-        // Push checklist changes
-        let checklistToSync = try databaseManager.getChecklistItemsNeedingSync()
-        let groupedChecklist = Dictionary(grouping: checklistToSync, by: \.taskId)
-        
-        for (taskId, items) in groupedChecklist {
-            try await syncChecklistToServer(taskId: taskId, items: items)
-        }
-        
-        // Push audit logs
-        let logsToSync = try databaseManager.getAuditLogsNeedingSync()
-        for log in logsToSync {
-            try await syncAuditLogToServer(log)
-        }
-        
-        // Push staff changes
-        let staffToSync = try databaseManager.getStaffNeedingSync()
-        for staff in staffToSync {
-            try await syncStaffToServer(staff)
-        }
-    }
-    
-    private func syncTaskToServer(_ localTask: LocalFulfillmentTask) async throws {
-        do {
-            if localTask.isDeleted {
-                // Handle task deletion - for now we'll skip this as the API might not support deletion
-                try databaseManager.markTaskAsSynced(localTask)
-                return
+        // 3. 處理同步成功的後續操作
+        print("任務 \(localTask.id) 已成功上傳。")
+        switch localTask.syncStatus {
+        case .pausedPendingSync:
+            // 暫停的任務：同步成功後從本地刪除 (ownership transfer back to server)
+            try databaseManager.deleteSyncedTask(taskId: localTask.id)
+            print("已從本地刪除暫停的任務 (返回伺服器池): \(localTask.id)")
+        case .pendingSync:
+            switch localTask.status {
+            case .completed, .cancelled:
+                // 已完成/取消的任務：同步成功後從本地刪除
+                try databaseManager.deleteSyncedTask(taskId: localTask.id)
+                print("已從本地刪除已終結的任務: \(localTask.id)")
+            case .pending, .picking, .picked, .packed, .inspecting, .correctionNeeded, .correcting:
+                // 仍在進行中的任務：僅標記為已同步
+                try databaseManager.markTaskAsSynced(taskId: localTask.id)
+                print("已將進行中的任務標記為同步完成: \(localTask.id)")
+            case .pausedPendingSync:
+                // This shouldn't happen since we handle this in the outer switch
+                break
             }
-            
-            let _ = localTask.asFulfillmentTask
-            
-            // For MVP, we'll assume task updates go through the action API
-            // In a full implementation, you'd have specific update endpoints
-            
-            try databaseManager.markTaskAsSynced(localTask)
-            print("✅ Synced task: \(localTask.orderName)")
-            
-        } catch {
-            print("❌ Failed to sync task \(localTask.orderName): \(error)")
-            throw error
+        case .synced, .error:
+            // 這些狀態不應該在待同步列表中
+            break
         }
     }
-    
-    private func syncChecklistToServer(taskId: String, items: [LocalChecklistItem]) async throws {
-        do {
-            let domainItems = items.map { $0.asChecklistItem }
-            
-            // Use existing API method
-            if let currentOperator = try? databaseManager.fetchLocalStaff(id: "current"),
-               currentOperator.isCheckedIn == true {
-                
-                let updatedTask = try await apiService.updateTaskChecklist(
-                    taskId: taskId,
-                    checklist: domainItems,
-                    operatorId: currentOperator.id
-                )
-                
-                // Update local task with server response
-                try databaseManager.updateTask(updatedTask)
-            }
-            
-            // Mark items as synced
-            for item in items {
-                try databaseManager.markChecklistItemAsSynced(item)
-            }
-            
-            print("✅ Synced checklist for task: \(taskId)")
-            
-        } catch {
-            print("❌ Failed to sync checklist for task \(taskId): \(error)")
-            throw error
+
+    /// Sync local task to API using existing APIService methods
+    private func syncTaskToAPI(_ localTask: LocalTask, using payload: UpdateTaskPayload) async throws {
+        // Convert LocalTask status to appropriate TaskAction
+        let action: TaskAction
+        switch localTask.status {
+        case .pending:
+            action = .startPicking // Pending tasks start picking when synced
+        case .picking:
+            action = .startPicking
+        case .picked:
+            action = .completePicking
+        case .packed:
+            action = .startPacking
+        case .inspecting:
+            action = .startInspection
+        case .correctionNeeded:
+            action = .enterCorrection
+        case .correcting:
+            action = .startCorrection
+        case .completed:
+            action = .completeInspection
+        case .cancelled:
+            action = .cancelTask
+        case .pausedPendingSync:
+            action = .pauseTask
         }
-    }
-    
-    private func syncAuditLogToServer(_ localLog: LocalAuditLog) async throws {
-        // For MVP, audit logs might be create-only
-        // In a full implementation, you'd have an audit log API endpoint
-        try databaseManager.markAuditLogAsSynced(localLog)
-        print("✅ Synced audit log: \(localLog.id)")
-    }
-    
-    private func syncStaffToServer(_ localStaff: LocalStaffMember) async throws {
-        // For MVP, staff changes might go through check-in API
-        try databaseManager.markStaffAsSynced(localStaff)
-        print("✅ Synced staff: \(localStaff.name)")
-    }
-    
-    // MARK: - Pull Server Data
-    
-    private func pullServerData() async throws {
-        print("📥 Pulling latest data from server...")
-        
-        // Pull dashboard data (includes tasks)
-        do {
-            let dashboardData = try await apiService.fetchDashboardData()
-            let groupedTasks = dashboardData.tasks
-            
-            // Convert simplified grouped tasks to flat array
-            let allTasks = [
-                groupedTasks.pending,
-                groupedTasks.picking,      // Contains picking + picked tasks
-                groupedTasks.packed,
-                groupedTasks.inspecting,   // Contains inspecting + correction tasks
-                groupedTasks.completed,
-                groupedTasks.paused,
-                groupedTasks.cancelled
-            ].flatMap { $0 }
-            
-            // Save to local database
-            try databaseManager.saveTasks(allTasks)
-            
-            print("✅ Pulled \(allTasks.count) tasks from server")
-            
-        } catch {
-            print("❌ Failed to pull dashboard data: \(error)")
-            // Don't throw - allow partial sync to continue
-        }
-        
-        // Pull staff data
-        do {
-            let allStaff = try await apiService.fetchAllStaff()
-            try databaseManager.saveStaff(allStaff)
-            
-            print("✅ Pulled \(allStaff.count) staff members from server")
-            
-        } catch {
-            print("❌ Failed to pull staff data: \(error)")
-            // Don't throw - allow partial sync to continue
-        }
-    }
-    
-    // MARK: - Offline Operations
-    
-    func saveTaskOffline(_ task: FulfillmentTask) async throws {
-        try databaseManager.updateTask(task)
-        await updatePendingChangesCount()
-        
-        // Try to sync immediately if online
-        if isOnline && !isSyncing {
-            Task { @MainActor [weak self] in
-                await self?.performFullSync()
-            }
-        }
-    }
-    
-    func saveChecklistOffline(_ items: [ChecklistItem], forTaskId taskId: String) async throws {
-        for item in items {
-            try databaseManager.updateChecklistItem(item, forTaskId: taskId)
-        }
-        await updatePendingChangesCount()
-        
-        // Try to sync immediately if online
-        if isOnline && !isSyncing {
-            Task { @MainActor [weak self] in
-                await self?.performFullSync()
-            }
-        }
-    }
-    
-    func performTaskActionOffline(taskId: String, action: String, operatorId: String, payload: [String: String]? = nil) async throws {
-        // Create audit log for offline action
-        let auditLog = AuditLog(
-            id: UUID().uuidString,
-            timestamp: Date(),
-            operatorName: operatorId, // In a real app, you'd look up the name
-            taskOrderName: taskId, // In a real app, you'd look up the order name
-            actionType: action,
-            details: payload?.description
+
+        // Use existing performTaskAction method
+        _ = try await apiService.performTaskAction(
+            taskId: localTask.id,
+            action: action,
+            operatorId: localTask.assignedStaffId,
+            payload: nil
         )
-        
-        try databaseManager.addAuditLog(auditLog)
-        await updatePendingChangesCount()
-        
-        // For offline actions, we'll queue them for sync when online
-        // In a full implementation, you'd store the action details for replay
-        
-        print("📱 Queued offline action: \(action) for task \(taskId)")
-    }
-    
-    // MARK: - Helper Methods
-    
-    private func updatePendingChangesCount() async {
-        guard isInitialized else { return }
-        
-        do {
-            let tasksCount = try databaseManager.getTasksNeedingSync().count
-            let checklistCount = try databaseManager.getChecklistItemsNeedingSync().count
-            let logsCount = try databaseManager.getAuditLogsNeedingSync().count
-            let staffCount = try databaseManager.getStaffNeedingSync().count
-            
-            pendingChangesCount = tasksCount + checklistCount + logsCount + staffCount
-        } catch {
-            print("Error updating pending changes count: \(error)")
-            // Don't crash, just set to 0 on error
-            pendingChangesCount = 0
+
+        // If there are checklist updates, sync them too
+        if !localTask.checklistItems.isEmpty {
+            let checklistItems = localTask.checklistItems.map { localItem in
+                ChecklistItem(
+                    id: Int(localItem.id.split(separator: "-").last.flatMap { Int($0) } ?? 0),
+                    sku: localItem.sku,
+                    name: localItem.itemName,
+                    variant_title: "",
+                    quantity_required: localItem.quantity,
+                    image_url: nil,
+                    quantity_picked: localItem.status == .completed ? localItem.quantity : 0,
+                    is_completed: localItem.status == .completed
+                )
+            }
+
+            _ = try await apiService.updateTaskChecklist(
+                taskId: localTask.id,
+                checklist: checklistItems,
+                operatorId: localTask.assignedStaffId
+            )
         }
     }
-    
-    // MARK: - Public Data Access (Offline-First)
-    
-    func getTasks() async throws -> [FulfillmentTask] {
-        // Always return local data first
-        let localTasks = try databaseManager.fetchAllTasks()
+
+    /// 建立上傳至 API 的 payload。
+    private func createPayload(from localTask: LocalTask) throws -> UpdateTaskPayload {
+        // 將 LocalChecklistItem 轉換為 API 需要的格式
+        let checklistPayload = localTask.checklistItems.map { localItem in
+            ChecklistItemPayload(
+                id: localItem.id, // 注意：這裡的 ID 可能是組合 ID，需要 API 端能正確解析
+                sku: localItem.sku,
+                status: localItem.status.rawValue,
+                scannedAt: localItem.scannedAt
+            )
+        }
         
-        // Try to sync in background if online
-        if isOnline && !isSyncing {
-            Task { @MainActor [weak self] in
-                await self?.performFullSync()
+        return UpdateTaskPayload(
+            id: localTask.id,
+            status: localTask.status.rawValue,
+            lastModified: localTask.lastModifiedLocally,
+            checklist: checklistPayload
+        )
+    }
+
+    /// 設定網路狀態監聽。
+    private func setupNetworkMonitoring() {
+        print("🔥 SYNCMANAGER: Setting up network monitoring")
+        networkMonitor.pathUpdateHandler = { path in
+            Task { @MainActor in
+                let newOnlineStatus = path.status == .satisfied
+                print("🔥 SYNCMANAGER: Network path status = \(path.status), isOnline = \(newOnlineStatus)")
+                if self.isOnline != newOnlineStatus {
+                    self.isOnline = newOnlineStatus
+                    print("🔥 SYNCMANAGER: 網路狀態改變: \(self.isOnline ? "在線" : "離線")")
+
+                    // 當網路從離線變為在線時，觸發一次同步
+                    if self.isOnline {
+                        await self.performSync()
+                    }
+                } else {
+                    print("🔥 SYNCMANAGER: Network status unchanged: \(self.isOnline ? "在線" : "離線")")
+                }
             }
         }
-        
-        return localTasks
     }
     
-    func getTasksByStatus(_ status: TaskStatus) async throws -> [FulfillmentTask] {
-        let localTasks = try databaseManager.fetchTasksByStatus(status)
-        
-        // Try to sync in background if online
-        if isOnline && !isSyncing {
-            Task { @MainActor [weak self] in
-                await self?.performFullSync()
-            }
+    /// 處理由 iOS 系統觸發的背景刷新任務。
+    private func handleAppRefresh(task: BGAppRefreshTask) {
+        // 為下一次刷新安排新任務
+        scheduleAppRefresh()
+
+        // 設置任務超時處理
+        task.expirationHandler = {
+            // 在這裡清理並取消同步任務
+            // 例如：apiService.cancelCurrentTasks()
+            task.setTaskCompleted(success: false)
         }
+
+        print("開始執行背景同步任務...")
         
-        return localTasks
-    }
-    
-    func getStaff() async throws -> [StaffMember] {
-        let localStaff = try databaseManager.fetchAllStaff()
-        
-        // Try to sync in background if online
-        if isOnline && !isSyncing {
-            Task { @MainActor [weak self] in
-                await self?.performFullSync()
-            }
+        // 在背景執行同步
+        Task {
+            await performSync()
+            let success = (lastSyncError == nil)
+            print("背景同步任務完成，結果: \(success ? "成功" : "失敗")")
+            task.setTaskCompleted(success: success)
         }
-        
-        return localStaff
-    }
-    
-    func getChecklistItems(forTaskId taskId: String) async throws -> [ChecklistItem] {
-        return try databaseManager.fetchChecklistItems(forTaskId: taskId)
     }
 }

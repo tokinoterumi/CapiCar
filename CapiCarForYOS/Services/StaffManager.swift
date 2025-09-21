@@ -12,15 +12,24 @@ class StaffManager: ObservableObject {
     @Published var errorMessage: String?
     
     // MARK: - Private Properties
-    
-    private let apiService: APIService
+
+    private let offlineAPIService = OfflineAPIService.shared
     private let currentOperatorKey = "CapiCar_CurrentOperator"
     
     // MARK: - Initialization
     
     init(apiService: APIService = APIService.shared) {
-        self.apiService = apiService
+        // Keep the apiService parameter for compatibility, but use OfflineAPIService
         loadCurrentOperator()
+
+        // Ensure we always have someone selected by loading staff list
+        Task {
+            await fetchAvailableStaff()
+            if currentOperator == nil && !availableStaff.isEmpty {
+                selectOperator(availableStaff.first!)
+                print("🔧 Auto-selected \(availableStaff.first!.name) on app launch")
+            }
+        }
     }
     
     // MARK: - Public Methods
@@ -28,14 +37,16 @@ class StaffManager: ObservableObject {
     func fetchAvailableStaff() async {
         isLoading = true
         errorMessage = nil
-        
+
         do {
-            availableStaff = try await apiService.fetchAllStaff()
+            availableStaff = try await offlineAPIService.fetchAllStaff()
+            // Validate that current operator still exists in the updated staff list
+            validateCurrentOperator()
         } catch {
             errorMessage = "Failed to load staff list. Please check your connection."
             print("Error fetching staff: \(error)")
         }
-        
+
         isLoading = false
     }
     
@@ -44,7 +55,7 @@ class StaffManager: ObservableObject {
         errorMessage = nil
         
         do {
-            let result = try await apiService.checkInStaff(
+            let result = try await offlineAPIService.checkInStaff(
                 staffId: staff.id,
                 action: .checkIn
             )
@@ -75,7 +86,7 @@ class StaffManager: ObservableObject {
         errorMessage = nil
         
         do {
-            _ = try await apiService.checkInStaff(
+            _ = try await offlineAPIService.checkInStaff(
                 staffId: staffMember.id,
                 action: .checkOut
             )
@@ -125,8 +136,19 @@ class StaffManager: ObservableObject {
               let staffMember = try? JSONDecoder().decode(StaffMember.self, from: operatorData) else {
             return
         }
-        
+
         currentOperator = staffMember
+    }
+
+    private func validateCurrentOperator() {
+        guard let currentOp = currentOperator else { return }
+
+        // Check if current operator still exists in the available staff list
+        if !availableStaff.contains(where: { $0.id == currentOp.id }) {
+            print("⚠️ Current operator \(currentOp.name) (ID: \(currentOp.id)) no longer exists in staff list. Clearing cached operator.")
+            currentOperator = nil
+            clearCurrentOperator()
+        }
     }
     
     private func saveCurrentOperator() {
@@ -142,15 +164,4 @@ class StaffManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: currentOperatorKey)
     }
     
-    // MARK: - Mock Data (Remove in production)
-    
-    func loadMockStaff() {
-        availableStaff = [
-            StaffMember(id: "staff_001", name: "Alex Johnson"),
-            StaffMember(id: "staff_002", name: "Maria Garcia"),
-            StaffMember(id: "staff_003", name: "David Chen"),
-            StaffMember(id: "staff_004", name: "Sarah Wilson"),
-            StaffMember(id: "staff_005", name: "Mike Rodriguez")
-        ]
-    }
 }

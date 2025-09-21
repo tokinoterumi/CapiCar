@@ -43,17 +43,50 @@ struct CorrectionFlowView: View {
     
     private var headerSection: some View {
         VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: headerIcon)
                 .font(.system(size: 50))
-                .foregroundColor(.orange)
-            
-            Text("Inspection Failed")
+                .foregroundColor(headerColor)
+
+            Text(headerTitle)
                 .font(.title2)
                 .fontWeight(.bold)
-            
+
             Text("Order: \(viewModel.task.orderName)")
                 .font(.headline)
                 .foregroundColor(.secondary)
+        }
+    }
+
+    private var headerIcon: String {
+        switch viewModel.workflowState {
+        case .initial:
+            return "exclamationmark.triangle.fill"
+        case .correcting:
+            return "gearshape.fill"
+        case .completing:
+            return "checkmark.circle.fill"
+        }
+    }
+
+    private var headerColor: Color {
+        switch viewModel.workflowState {
+        case .initial:
+            return .orange
+        case .correcting:
+            return .blue
+        case .completing:
+            return .green
+        }
+    }
+
+    private var headerTitle: String {
+        switch viewModel.workflowState {
+        case .initial:
+            return "Inspection Failed"
+        case .correcting:
+            return "Correction in Progress"
+        case .completing:
+            return "Ready to Complete"
         }
     }
     
@@ -86,10 +119,15 @@ struct CorrectionFlowView: View {
     
     private var actionButtonsSection: some View {
         VStack(spacing: 16) {
-            if viewModel.selectedErrorType != nil {
+            if viewModel.selectedErrorType != nil && viewModel.workflowState == .initial {
                 costImpactSection
             }
-            
+
+            // Show workflow state dependent content
+            if viewModel.workflowState == .completing {
+                correctionInProgressSection
+            }
+
             HStack(spacing: 16) {
                 PrimaryButton(
                     title: "Cancel",
@@ -98,15 +136,33 @@ struct CorrectionFlowView: View {
                 ) {
                     dismiss()
                 }
-                
+
                 PrimaryButton(
-                    title: "Start Correction",
+                    title: viewModel.primaryButtonTitle,
                     isLoading: viewModel.isLoading,
-                    isDisabled: viewModel.selectedErrorType == nil || (viewModel.selectedErrorType == .packingError && viewModel.costImpact == nil)
+                    isDisabled: !viewModel.isPrimaryButtonEnabled
                 ) {
                     Task {
-                        await viewModel.startCorrection()
-                        dismiss()
+                        switch viewModel.workflowState {
+                        case .initial:
+                            if viewModel.isHappyPath {
+                                // Happy path: Complete entire workflow in one action
+                                await viewModel.completeHappyPathWorkflow()
+                                dismiss()
+                            } else {
+                                // Regular path: Just start correction
+                                await viewModel.startCorrection()
+                                // Don't dismiss immediately for non-happy path
+                                if viewModel.workflowState != .completing {
+                                    dismiss()
+                                }
+                            }
+                        case .completing:
+                            await viewModel.completeCorrection()
+                            dismiss()
+                        case .correcting:
+                            break // Should not happen
+                        }
                     }
                 }
             }
@@ -118,7 +174,7 @@ struct CorrectionFlowView: View {
             if viewModel.selectedErrorType == .packingError {
                 Text("Cost Impact")
                     .font(.headline)
-                
+
                 VStack(spacing: 8) {
                     CostImpactButton(
                         title: "Affects Shipping Cost",
@@ -127,7 +183,7 @@ struct CorrectionFlowView: View {
                     ) {
                         viewModel.costImpact = .affectsCost
                     }
-                    
+
                     CostImpactButton(
                         title: "No Cost Impact",
                         subtitle: "Reuse existing shipping label",
@@ -138,6 +194,51 @@ struct CorrectionFlowView: View {
                 }
             }
         }
+    }
+
+    private var correctionInProgressSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.title2)
+
+                Text("Correction Ready")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+            }
+
+            Text("The correction has been processed and is ready to be completed.")
+                .font(.body)
+                .foregroundColor(.secondary)
+
+            if let errorType = viewModel.selectedErrorType {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Completed:")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+
+                    Text("✓ \(errorType.displayName) correction")
+                        .font(.body)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.green.opacity(0.1))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                        )
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.green.opacity(0.05))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.green.opacity(0.3), lineWidth: 1.5)
+        )
     }
 }
 

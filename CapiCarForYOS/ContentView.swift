@@ -180,10 +180,9 @@ struct ContentView: View {
 #Preview {
     let mockAuthManager = AuthenticationManager()
     let mockStaffManager = StaffManager()
-    let mockSyncManager = SyncManager()
-    
-    return ContentView()
+
+    ContentView()
         .environmentObject(mockAuthManager)
         .environmentObject(mockStaffManager)
-        .environmentObject(mockSyncManager)
+        .environmentObject(SyncManager.shared)
 }

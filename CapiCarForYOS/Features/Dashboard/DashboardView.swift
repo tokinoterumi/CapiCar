@@ -158,7 +158,7 @@ struct DashboardView_Previews: PreviewProvider {
         let mockStaffManager = StaffManager()
         mockStaffManager.currentOperator = StaffMember(id: "staff1", name: "Test User")
         
-        let mockSyncManager = SyncManager()
+        let mockSyncManager = SyncManager.shared
         
         return DashboardView(onTaskSelected: { _ in })
             .environmentObject(mockStaffManager)

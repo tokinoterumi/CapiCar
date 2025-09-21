@@ -324,7 +324,7 @@ extension FulfillmentTask {
 
 struct TaskDetailView_Previews: PreviewProvider {
     static var previews: some View {
-        let mockSyncManager = SyncManager()
+        let mockSyncManager = SyncManager.shared
         
         NavigationStack {
             TaskDetailView(

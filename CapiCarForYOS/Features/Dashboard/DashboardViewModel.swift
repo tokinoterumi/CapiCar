@@ -33,9 +33,18 @@ class DashboardViewModel: ObservableObject {
         do {
             // 2. Await the result from OfflineAPIService
             let fetchedGroupedTasks = try await offlineAPIService.fetchDashboardTasks()
+            print("🔥 VIEWMODEL: Successfully received grouped tasks from OfflineAPIService")
+            print("🔥 VIEWMODEL: - Pending: \(fetchedGroupedTasks.pending.count)")
+            print("🔥 VIEWMODEL: - Picking: \(fetchedGroupedTasks.picking.count)")
+            print("🔥 VIEWMODEL: - Packed: \(fetchedGroupedTasks.packed.count)")
+            print("🔥 VIEWMODEL: - Inspecting: \(fetchedGroupedTasks.inspecting.count)")
+            print("🔥 VIEWMODEL: - Completed: \(fetchedGroupedTasks.completed.count)")
+            print("🔥 VIEWMODEL: - Paused: \(fetchedGroupedTasks.paused.count)")
+            print("🔥 VIEWMODEL: - Cancelled: \(fetchedGroupedTasks.cancelled.count)")
 
             // 3. On success, update the published property.
             self.groupedTasks = fetchedGroupedTasks
+            print("🔥 VIEWMODEL: Updated groupedTasks property")
 
         } catch {
             // 4. On failure, capture a user-friendly error message.

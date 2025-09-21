@@ -6,13 +6,13 @@ class OfflineAPIService {
     
     private let apiService = APIService.shared
     private lazy var databaseManager = DatabaseManager.shared
-    private var syncManager: SyncManager?
+    private let syncManager = SyncManager.shared
     private var suppressBackgroundSync = false
-    
+
     init() {}
-    
+
     func setSyncManager(_ manager: SyncManager) {
-        self.syncManager = manager
+        // Deprecated: OfflineAPIService now uses SyncManager.shared directly
     }
 
     func suppressBackgroundSyncTemporarily() {
@@ -28,9 +28,14 @@ class OfflineAPIService {
     
     func fetchDashboardData() async throws -> DashboardData {
         // Always fetch fresh data when online to avoid stale cache issues
-        if syncManager?.isOnline == true {
+        print("🔥 CONNECTIVITY: syncManager.isOnline = \(syncManager.isOnline)")
+        if syncManager.isOnline {
             do {
                 let freshData = try await apiService.fetchDashboardData()
+                print("🔥 DASHBOARD: Successfully fetched fresh data from API")
+                print("🔥 DASHBOARD: Pending tasks: \(freshData.tasks.pending.count)")
+                print("🔥 DASHBOARD: Paused tasks: \(freshData.tasks.paused.count)")
+                print("🔥 DASHBOARD: Total tasks in response: \(freshData.stats.total)")
 
                 // Save fresh tasks to local database for future offline access
                 let allTasks = [
@@ -43,7 +48,9 @@ class OfflineAPIService {
                     freshData.tasks.cancelled
                 ].flatMap { $0 }
 
+                print("🔥 DASHBOARD: Total tasks to save to local DB: \(allTasks.count)")
                 try databaseManager.saveTasks(allTasks)
+                print("🔥 DASHBOARD: Successfully saved tasks to local database")
 
                 return freshData
             } catch {
@@ -54,17 +61,27 @@ class OfflineAPIService {
 
         // Use local cache only when offline or when API fails
         let localTasks = try databaseManager.fetchAllTasks()
+        print("🔥 DASHBOARD: Using local cache - found \(localTasks.count) local tasks")
 
         // Convert local tasks to simplified grouped format (matching backend transformation)
-        let pendingTasks = localTasks.filter { $0.status == .pending && $0.isPaused != true }
-        let pickingTasks = localTasks.filter { ($0.status == .picking || $0.status == .picked) && $0.isPaused != true }
-        let packedTasks = localTasks.filter { $0.status == .packed && $0.isPaused != true }
+        let pendingTasks = localTasks.filter { $0.status == TaskStatus.pending && $0.isPaused != true }
+        let pickingTasks = localTasks.filter { ($0.status == TaskStatus.picking || $0.status == TaskStatus.picked) && $0.isPaused != true }
+        let packedTasks = localTasks.filter { $0.status == TaskStatus.packed && $0.isPaused != true }
         let inspectingTasks = localTasks.filter {
-            ($0.status == .inspecting || $0.status == .correctionNeeded || $0.status == .correcting) && $0.isPaused != true
+            ($0.status == TaskStatus.inspecting || $0.status == TaskStatus.correctionNeeded || $0.status == TaskStatus.correcting) && $0.isPaused != true
         }
-        let completedTasks = localTasks.filter { $0.status == .completed }
+        let completedTasks = localTasks.filter { $0.status == TaskStatus.completed }
         let pausedTasks = localTasks.filter { $0.isPaused == true }
-        let cancelledTasks = localTasks.filter { $0.status == .cancelled }
+        let cancelledTasks = localTasks.filter { $0.status == TaskStatus.cancelled }
+
+        print("🔥 DASHBOARD: Local task breakdown:")
+        print("🔥 DASHBOARD: - Pending: \(pendingTasks.count)")
+        print("🔥 DASHBOARD: - Picking: \(pickingTasks.count)")
+        print("🔥 DASHBOARD: - Packed: \(packedTasks.count)")
+        print("🔥 DASHBOARD: - Inspecting: \(inspectingTasks.count)")
+        print("🔥 DASHBOARD: - Completed: \(completedTasks.count)")
+        print("🔥 DASHBOARD: - Paused: \(pausedTasks.count)")
+        print("🔥 DASHBOARD: - Cancelled: \(cancelledTasks.count)")
 
         let groupedTasks = GroupedTasks(
             pending: pendingTasks,
@@ -91,7 +108,7 @@ class OfflineAPIService {
         let dashboardData = DashboardData(
             tasks: groupedTasks,
             stats: stats,
-            lastUpdated: syncManager?.lastSyncDate?.ISO8601Format() ?? "Never"
+            lastUpdated: syncManager.lastSyncDate?.ISO8601Format() ?? "Never"
         )
 
         // Dashboard fetch should not trigger background sync to prevent loops
@@ -112,7 +129,7 @@ class OfflineAPIService {
             let task = localTask.asFulfillmentTask
             
             // Try to fetch fresh data in background if online
-            if syncManager?.isOnline == true {
+            if syncManager.isOnline {
                 Task {
                     do {
                         let freshTask = try await apiService.fetchTask(id: id)
@@ -127,7 +144,7 @@ class OfflineAPIService {
         }
         
         // If not in local database and online, fetch from server
-        if syncManager?.isOnline == true {
+        if syncManager.isOnline {
             let task = try await apiService.fetchTask(id: id)
             try databaseManager.updateTask(task)
             return task
@@ -143,7 +160,7 @@ class OfflineAPIService {
         payload: [String: String]? = nil
     ) async throws -> FulfillmentTask {
         
-        if syncManager?.isOnline == true {
+        if syncManager.isOnline {
             // Online: perform action and update local database
             do {
                 let updatedTask = try await apiService.performTaskAction(
@@ -194,31 +211,31 @@ class OfflineAPIService {
         // Apply optimistic updates based on action
         switch action {
         case .startPicking:
-            task.status = .picking
-            
+            task.status = TaskStatus.picking
+
         case .completePicking:
-            task.status = .picked
-            
+            task.status = TaskStatus.picked
+
         case .startPacking:
-            task.status = .packed
-            
+            task.status = TaskStatus.packed
+
         case .startInspection:
-            task.status = .inspecting
-            
+            task.status = TaskStatus.inspecting
+
         case .completeInspection:
-            task.status = .completed
-            
+            task.status = TaskStatus.completed
+
         case .enterCorrection:
-            task.status = .correctionNeeded
-            
+            task.status = TaskStatus.correctionNeeded
+
         case .startCorrection:
-            task.status = .correcting
-            
+            task.status = TaskStatus.correcting
+
         case .resolveCorrection:
-            task.status = .completed // Complete the task directly - no need for further inspection
-            
+            task.status = TaskStatus.completed // Complete the task directly - no need for further inspection
+
         case .reportException:
-            task.status = .cancelled
+            task.status = TaskStatus.cancelled
 
         case .pauseTask:
             task.isPaused = true
@@ -232,7 +249,7 @@ class OfflineAPIService {
             }
 
         case .cancelTask:
-            task.status = .cancelled
+            task.status = TaskStatus.cancelled
         }
         
         // Update current operator
@@ -244,7 +261,7 @@ class OfflineAPIService {
         try databaseManager.updateTask(task)
         
         // Queue the action for sync
-        try await syncManager?.performTaskActionOffline(
+        try await syncManager.performTaskActionOffline(
             taskId: taskId,
             action: action.rawValue,
             operatorId: operatorId,
@@ -263,7 +280,7 @@ class OfflineAPIService {
         // Always update local database first
         try databaseManager.saveChecklistItems(checklist, forTaskId: taskId)
         
-        if syncManager?.isOnline == true {
+        if syncManager.isOnline {
             // Try to sync to server
             do {
                 let updatedTask = try await apiService.updateTaskChecklist(
@@ -278,11 +295,11 @@ class OfflineAPIService {
             } catch {
                 print("Checklist sync failed, will retry later: \(error)")
                 // Mark for later sync
-                try await syncManager?.saveChecklistOffline(checklist, forTaskId: taskId)
+                try await syncManager.saveChecklistOffline(checklist, forTaskId: taskId)
             }
         } else {
             // Queue for sync when online
-            try await syncManager?.saveChecklistOffline(checklist, forTaskId: taskId)
+            try await syncManager.saveChecklistOffline(checklist, forTaskId: taskId)
         }
         
         // Return current task state
@@ -296,25 +313,30 @@ class OfflineAPIService {
     // MARK: - Staff API (Offline-First)
     
     func fetchAllStaff() async throws -> [StaffMember] {
-        // Try to fetch fresh data from API if online
-        if syncManager?.isOnline == true {
-            do {
-                let freshStaff = try await apiService.fetchAllStaff()
-                try databaseManager.saveStaff(freshStaff)
-                return freshStaff
-            } catch {
-                print("Failed to fetch fresh staff data, using local: \(error)")
-                // Fall back to local data if API fails
-            }
-        }
+        // For now, always try API first since we don't have local staff storage implemented
+        do {
+            let freshStaff = try await apiService.fetchAllStaff()
+            print("✅ Successfully fetched \(freshStaff.count) staff members from API")
 
-        // Return local data as fallback
-        return try databaseManager.fetchAllStaff()
+            // Try to save to local storage (currently a no-op)
+            try databaseManager.saveStaff(freshStaff)
+            return freshStaff
+        } catch {
+            print("❌ Failed to fetch staff data from API: \(error)")
+
+            // Return local data as fallback (currently empty, but could have saved data)
+            let localStaff = try databaseManager.fetchAllStaff()
+            if localStaff.isEmpty {
+                // If no local data and API failed, throw the original error
+                throw error
+            }
+            return localStaff
+        }
     }
     
     func checkInStaff(staffId: String, action: CheckInAction) async throws -> CheckInResult {
         
-        if syncManager?.isOnline == true {
+        if syncManager.isOnline {
             // Try online check-in
             do {
                 let result = try await apiService.checkInStaff(staffId: staffId, action: action)
@@ -359,11 +381,11 @@ class OfflineAPIService {
     func fetchTaskWorkHistory(taskId: String) async throws -> [WorkHistoryEntry] {
         // Try API first if online, fallback to empty for now
         // In a full implementation, we'd store audit logs locally too
-        if syncManager?.isOnline == true {
+        if syncManager.isOnline {
             do {
                 return try await apiService.fetchTaskWorkHistory(taskId: taskId)
             } catch {
-                print("Failed to fetch work history from API: \\(error)")
+                print("Failed to fetch work history from API: \(error)")
                 // Return empty array for offline mode
                 return []
             }
@@ -376,27 +398,27 @@ class OfflineAPIService {
     // MARK: - Sync Status
 
     var isOnline: Bool {
-        syncManager?.isOnline ?? false
+        syncManager.isOnline
     }
-    
+
     var isSyncing: Bool {
-        syncManager?.isSyncing ?? false
+        syncManager.isSyncing
     }
-    
+
     var pendingChangesCount: Int {
-        syncManager?.pendingChangesCount ?? 0
+        syncManager.pendingChangesCount
     }
-    
+
     var lastSyncDate: Date? {
-        syncManager?.lastSyncDate
+        syncManager.lastSyncDate
     }
-    
+
     var syncError: String? {
-        syncManager?.syncError
+        syncManager.syncError
     }
     
     func forceSyncNow() async {
-        await syncManager?.forceSyncNow()
+        await syncManager.forceSyncNow()
     }
 
     // MARK: - Cache Management
@@ -404,5 +426,68 @@ class OfflineAPIService {
     func clearAllLocalData() throws {
         try databaseManager.clearAllData()
         print("✅ Cleared all local cache data")
+    }
+
+    // MARK: - Phase 2: Task Claiming (Online Transaction → Offline Ownership)
+
+    /// Claims a pending task for the current operator and transfers ownership to the device
+    /// This implements Phase 2 of the offline-sync strategy
+    /// - Parameters:
+    ///   - taskId: The ID of the pending task to claim
+    ///   - operatorId: The ID of the operator claiming the task
+    /// - Returns: The claimed task with full details for offline execution
+    func claimTask(taskId: String, operatorId: String) async throws -> FulfillmentTask {
+        // Must be online for task claiming (Phase 2 requirement)
+        guard syncManager.isOnline else {
+            throw APIError.serverError(message: "Must be online to claim tasks")
+        }
+
+        do {
+            // 1. Atomic operation: claim task on server
+            let claimedTask = try await apiService.performTaskAction(
+                taskId: taskId,
+                action: .startPicking,
+                operatorId: operatorId,
+                payload: nil
+            )
+
+            // 2. Transfer ownership to device: save to local database
+            guard let staffMember = try? await getOperator(operatorId: operatorId) else {
+                throw APIError.serverError(message: "Operator not found")
+            }
+
+            let localTask = LocalTask.fromFulfillmentTask(claimedTask, assignedTo: staffMember)
+            try databaseManager.saveLocalTask(localTask)
+
+            print("✅ Task \(taskId) claimed and transferred to device ownership")
+            return claimedTask
+
+        } catch {
+            print("❌ Task claiming failed: \(error)")
+            throw error
+        }
+    }
+
+    /// Get operator details for task claiming
+    private func getOperator(operatorId: String) async throws -> StaffMember {
+        let allStaff = try await fetchAllStaff()
+        guard let staffOperator = allStaff.first(where: { $0.id == operatorId }) else {
+            throw APIError.serverError(message: "Operator \(operatorId) not found")
+        }
+        return staffOperator
+    }
+
+    // MARK: - Phase 3: Task Execution (Offline-First Operations)
+
+    /// Pause task and queue for ownership transfer back to server
+    /// This implements the Task Pausing Flow from the design principles
+    func pauseTaskOffline(taskId: String) async throws {
+        // Update local task to pausedPendingSync state
+        try databaseManager.updateTaskSyncStatus(taskId: taskId, syncStatus: .pausedPendingSync)
+
+        // Queue for sync when online (ownership transfer back to server)
+        await syncManager.triggerSync()
+
+        print("✅ Task \(taskId) paused offline - queued for ownership transfer back to server")
     }
 }

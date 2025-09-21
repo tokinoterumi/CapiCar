@@ -141,7 +141,6 @@ struct StaffCheckInView_Previews: PreviewProvider {
         mockAuthManager.currentStaff = mockStaff
         
         let mockStaffManager = StaffManager()
-        mockStaffManager.loadMockStaff()
         
         return StaffCheckInView()
             .environmentObject(mockAuthManager)
