@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var showingTaskPreview = false
     @State private var showingFullWorkflow = false
     @State private var showingInspectionView = false
+    @State private var showingCorrectionFlow = false
 
     // Shared task selection handler
     private func selectTask(_ task: FulfillmentTask) {
@@ -60,27 +61,34 @@ struct ContentView: View {
     }
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            // Dashboard Tab
-            NavigationStack {
-                DashboardView(onTaskSelected: selectTask)
-                    .environmentObject(dashboardViewModel)
-            }
-            .tabItem {
-                Image(systemName: Tab.dashboard.iconName)
-                Text(Tab.dashboard.rawValue)
-            }
-            .tag(Tab.dashboard)
+        VStack(spacing: 0) {
+            // Staff selector at the top of all screens
+            StaffSelector()
+                .environmentObject(staffManager)
 
-            // Staff Tab - Staff management and check-in
-            NavigationStack {
-                StaffManagementView()
+            // Tab content below
+            TabView(selection: $selectedTab) {
+                // Dashboard Tab
+                NavigationStack {
+                    DashboardView(onTaskSelected: selectTask)
+                        .environmentObject(dashboardViewModel)
+                }
+                .tabItem {
+                    Image(systemName: Tab.dashboard.iconName)
+                    Text(Tab.dashboard.rawValue)
+                }
+                .tag(Tab.dashboard)
+
+                // Staff Tab - Staff management
+                NavigationStack {
+                    StaffManagementView()
+                }
+                .tabItem {
+                    Image(systemName: Tab.staff.iconName)
+                    Text(Tab.staff.rawValue)
+                }
+                .tag(Tab.staff)
             }
-            .tabItem {
-                Image(systemName: Tab.staff.iconName)
-                Text(Tab.staff.rawValue)
-            }
-            .tag(Tab.staff)
         }
         .accentColor(.blue)
         // Centralized sheet presentations
@@ -89,7 +97,8 @@ struct ContentView: View {
                 TaskPreviewSheet(
                     task: task,
                     showingFullWorkflow: $showingFullWorkflow,
-                    showingInspectionView: $showingInspectionView
+                    showingInspectionView: $showingInspectionView,
+                    showingCorrectionFlow: $showingCorrectionFlow
                 )
                 .environmentObject(staffManager)
                 .onAppear {
@@ -124,6 +133,25 @@ struct ContentView: View {
                 }
             }
         }
+        // CorrectionFlowView sheet presentation
+        .sheet(isPresented: $showingCorrectionFlow) {
+            if let task = selectedTask {
+                NavigationStack {
+                    CorrectionFlowView(
+                        task: task,
+                        currentOperator: staffManager.currentOperator
+                    )
+                }
+                .onDisappear {
+                    // Refresh dashboard data when CorrectionFlowView is dismissed
+                    Task {
+                        await dashboardViewModel.fetchDashboardData()
+                    }
+                    // Clear selected task to prevent stale data in TaskPreviewSheet
+                    selectedTask = nil
+                }
+            }
+        }
         // InspectionView sheet presentation
         .sheet(isPresented: $showingInspectionView) {
             if let task = selectedTask {
@@ -146,24 +174,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Staff Management View
-
-struct StaffManagementView: View {
-    var body: some View {
-        List {
-            Section("Staff Check-In") {
-                StaffCheckInView()
-            }
-            .listRowInsets(EdgeInsets())
-
-            Section("Network Settings") {
-                NetworkSettingsView()
-            }
-            .listRowInsets(EdgeInsets())
-        }
-        .navigationTitle("Staff & Settings")
-    }
-}
+// NOTE: StaffManagementView is now in Features/Staff/StaffManagementView.swift
 
 // MARK: - Preview
 #Preview {

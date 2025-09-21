@@ -294,7 +294,7 @@ class TaskDetailViewModel: ObservableObject {
         await performTaskAction(.startCorrection)
     }
     
-    /// Complete correction and return to workflow
+    /// Complete correction and finish task (no further inspection needed)
     func completeCorrection() async {
         await performTaskAction(.resolveCorrection)
     }
@@ -314,7 +314,7 @@ class TaskDetailViewModel: ObservableObject {
         await performTaskAction(.enterCorrection, payload: payload)
     }
     
-    /// Resolve correction and continue workflow
+    /// Resolve correction and complete task (no further inspection needed)
     func resolveCorrection() async {
         var payload: [String: String] = [:]
         if !newTrackingNumber.isEmpty {
@@ -365,7 +365,6 @@ class TaskDetailViewModel: ObservableObject {
     // MARK: - Private Helper Methods
     
     private func performTaskAction(_ action: TaskAction, payload: [String: String]? = nil) async {
-        // ... (same as your original implementation)
         guard let operatorId = currentOperator?.id else {
             errorMessage = "No active operator. Please check in on the dashboard."
             return

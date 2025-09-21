@@ -30,6 +30,8 @@
 		0DE0C41D2E7BF33900CF7394 /* BarcodeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C41C2E7BF33900CF7394 /* BarcodeScannerView.swift */; };
 		0DE0C41F2E7D323200CF7394 /* ReportIssueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C41E2E7D323200CF7394 /* ReportIssueView.swift */; };
 		0DE0C4212E7D323800CF7394 /* ReportIssueViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C4202E7D323800CF7394 /* ReportIssueViewModel.swift */; };
+		0DE0C4292E7EF41F00CF7394 /* StaffSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C4282E7EF41F00CF7394 /* StaffSelector.swift */; };
+		0DE0C42B2E7EF6D000CF7394 /* StaffManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE0C42A2E7EF6D000CF7394 /* StaffManagementView.swift */; };
 		0DE21F152E667AB400ABAD27 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F122E667AB400ABAD27 /* ContentView.swift */; };
 		0DE21F162E667AB400ABAD27 /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F132E667AB400ABAD27 /* Item.swift */; };
 		0DE21F172E667AB400ABAD27 /* CapiCar_for_YOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE21F112E667AB400ABAD27 /* CapiCar_for_YOSApp.swift */; };
@@ -89,6 +91,8 @@
 		0DE0C41C2E7BF33900CF7394 /* BarcodeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerView.swift; sourceTree = "<group>"; };
 		0DE0C41E2E7D323200CF7394 /* ReportIssueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportIssueView.swift; sourceTree = "<group>"; };
 		0DE0C4202E7D323800CF7394 /* ReportIssueViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportIssueViewModel.swift; sourceTree = "<group>"; };
+		0DE0C4282E7EF41F00CF7394 /* StaffSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffSelector.swift; sourceTree = "<group>"; };
+		0DE0C42A2E7EF6D000CF7394 /* StaffManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffManagementView.swift; sourceTree = "<group>"; };
 		0DE21EB02E666D7900ABAD27 /* CapiCarForYOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CapiCarForYOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DE21EBF2E666D7B00ABAD27 /* CapiCarForYOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CapiCarForYOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DE21EC92E666D7B00ABAD27 /* CapiCarForYOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CapiCarForYOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -270,6 +274,7 @@
 			children = (
 				0DE21F3E2E668DEF00ABAD27 /* StaffCheckInView.swift */,
 				0DE21F3C2E668DEA00ABAD27 /* StaffViewModel.swift */,
+				0DE0C42A2E7EF6D000CF7394 /* StaffManagementView.swift */,
 			);
 			path = Staff;
 			sourceTree = "<group>";
@@ -294,6 +299,7 @@
 			isa = PBXGroup;
 			children = (
 				0DE21F302E668DA400ABAD27 /* PrimaryButton.swift */,
+				0DE0C4282E7EF41F00CF7394 /* StaffSelector.swift */,
 				0DA315632E78FBC000817FD1 /* CameraScannerView.swift */,
 				0DE0C4142E7AF1A000CF7394 /* NetworkSettingsView.swift */,
 				0DA315652E78FBD300817FD1 /* VisionBarcodeScanner.swift */,
@@ -461,6 +467,7 @@
 				0638982D2E7856D400B8B44E /* StaffManager.swift in Sources */,
 				0DE21F152E667AB400ABAD27 /* ContentView.swift in Sources */,
 				0638984A2E78631200B8B44E /* LocalModels.swift in Sources */,
+				0DE0C4292E7EF41F00CF7394 /* StaffSelector.swift in Sources */,
 				0DE21F352E668DBF00ABAD27 /* DashboardViewModel.swift in Sources */,
 				063898342E78609700B8B44E /* CurrentOperatorWidget.swift in Sources */,
 				063898312E785DAA00B8B44E /* TaskPreviewSheet.swift in Sources */,
@@ -477,6 +484,7 @@
 				0638982F2E7856DA00B8B44E /* AuthenticationManager.swift in Sources */,
 				063898482E7862D800B8B44E /* SyncStatusWidget.swift in Sources */,
 				0DA3157C2E79268900817FD1 /* StaffSessionManager.swift in Sources */,
+				0DE0C42B2E7EF6D000CF7394 /* StaffManagementView.swift in Sources */,
 				063898442E7862AF00B8B44E /* SyncManager.swift in Sources */,
 				063898452E7862AF00B8B44E /* DatabaseManager.swift in Sources */,
 				063898462E7862AF00B8B44E /* OfflineAPIService.swift in Sources */,

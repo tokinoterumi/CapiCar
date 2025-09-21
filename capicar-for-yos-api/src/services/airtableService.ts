@@ -193,6 +193,54 @@ export class AirtableService {
         }
     }
 
+    async createStaff(name: string, staffId?: string): Promise<StaffMember> {
+        try {
+            const fields: any = {
+                name: name,
+                is_active: true
+            };
+
+            // If staffId is provided, use it, otherwise let Airtable auto-generate
+            if (staffId) {
+                fields.staff_id = staffId;
+            }
+
+            const record: any = await base(STAFF_TABLE).create(fields);
+            return {
+                id: record.id,
+                name: record.fields.name as string
+            };
+        } catch (error) {
+            console.error('Error creating staff member:', error);
+            throw new Error('Failed to create staff member');
+        }
+    }
+
+    async updateStaff(staffId: string, name: string): Promise<StaffMember | null> {
+        try {
+            const record: any = await base(STAFF_TABLE).update(staffId, {
+                name: name
+            });
+            return {
+                id: record.id,
+                name: record.fields.name as string
+            };
+        } catch (error) {
+            console.error('Error updating staff member:', error);
+            return null;
+        }
+    }
+
+    async deleteStaff(staffId: string): Promise<boolean> {
+        try {
+            await base(STAFF_TABLE).destroy(staffId);
+            return true;
+        } catch (error) {
+            console.error('Error deleting staff member:', error);
+            return false;
+        }
+    }
+
     // MARK: - Exception Pool Management
 
     async moveTaskToExceptionPool(
@@ -223,6 +271,44 @@ export class AirtableService {
 
     // MARK: - Audit Log
 
+    async getTaskWorkHistory(taskId: string): Promise<any[]> {
+        try {
+            const records = await base(AUDIT_LOG_TABLE)
+                .select({
+                    filterByFormula: `{task_id} = '${taskId}'`,
+                    sort: [{ field: 'timestamp', direction: 'asc' }]
+                })
+                .all();
+
+            return await Promise.all(records.map(async (record: any) => {
+                const fields = record.fields;
+
+                // Get staff name from linked record
+                let operatorName = 'Unknown';
+                if (fields.staff_id && Array.isArray(fields.staff_id) && fields.staff_id.length > 0) {
+                    try {
+                        const staffRecord = await base(STAFF_TABLE).find(fields.staff_id[0]);
+                        operatorName = staffRecord.fields.name as string || 'Unknown';
+                    } catch (error) {
+                        console.error('Error fetching staff name:', error);
+                    }
+                }
+
+                return {
+                    id: record.id,
+                    timestamp: fields.timestamp,
+                    action: this.formatActionForDisplay(fields.action_type as string, fields.details as string),
+                    operatorName: operatorName,
+                    icon: this.getActionIcon(fields.action_type as string),
+                    details: fields.details || ''
+                };
+            }));
+        } catch (error) {
+            console.error('Error fetching task work history:', error);
+            throw new Error('Failed to fetch task work history');
+        }
+    }
+
     async logAction(
         operatorId: string,
         taskId: string,
@@ -232,6 +318,13 @@ export class AirtableService {
         details?: string
     ): Promise<void> {
         try {
+            // First validate that the staff member exists
+            const staffMember = await this.getStaffById(operatorId);
+            if (!staffMember) {
+                console.warn(`⚠️  Skipping audit log - Staff member ${operatorId} not found`);
+                return;
+            }
+
             // Map complex action types to simpler ones that exist in Airtable
             const mappedActionType = this.mapActionType(actionType);
 
@@ -244,8 +337,10 @@ export class AirtableService {
                 new_value: newValue || '',
                 details: `${actionType}: ${details || ''}`.trim() // Include original action in details
             });
+
+            console.log(`✅ Audit log created: ${actionType} by ${staffMember.name} on task ${taskId}`);
         } catch (error) {
-            console.error('Error logging action:', error);
+            console.error('❌ Error logging action:', error);
             // Don't throw error for audit logging - it shouldn't break the main operation
         }
     }
@@ -273,6 +368,56 @@ export class AirtableService {
         };
 
         return actionMappings[actionType] || 'Field_Updated';
+    }
+
+    // Helper method to format action for display
+    private formatActionForDisplay(actionType: string, details: string): string {
+        // Extract original action from details if possible
+        const originalAction = details.split(':')[0];
+
+        const displayMappings: { [key: string]: string } = {
+            'Tasked_Started': 'Task Started',
+            'Task_Picked': 'Picking Completed',
+            'Packing_Started': 'Packing Completed',
+            'Inspection_Started': 'Inspection Started',
+            'Task_Inspected': 'Inspection Passed',
+            'Inspection_Failed': 'Inspection Failed - Correction Required',
+            'Correction_Started': 'Correction Started',
+            'Correction_Completed': 'Task Completed via Correction',
+            'Field_Updated': 'Updated',
+            'Exception_Logged': 'Exception Reported',
+            'Task_Paused': 'Task Paused',
+            'Task_Resumed': 'Task Resumed',
+            'Task_Auto_Cancelled': 'Task Cancelled'
+        };
+
+        // Use original action if it's in our mappings, otherwise use the mapped display text
+        if (originalAction && originalAction !== actionType) {
+            return displayMappings[originalAction] || originalAction.replace('_', ' ');
+        }
+
+        return displayMappings[actionType] || actionType.replace('_', ' ');
+    }
+
+    // Helper method to get appropriate icon for action
+    private getActionIcon(actionType: string): string {
+        const iconMappings: { [key: string]: string } = {
+            'Tasked_Started': 'play.circle',
+            'Task_Picked': 'basket.fill',
+            'Packing_Started': 'shippingbox',
+            'Inspection_Started': 'magnifyingglass',
+            'Task_Inspected': 'checkmark.seal',
+            'Inspection_Failed': 'exclamationmark.triangle',
+            'Correction_Started': 'wrench',
+            'Correction_Completed': 'checkmark.circle.fill',
+            'Field_Updated': 'pencil',
+            'Exception_Logged': 'exclamationmark.circle',
+            'Task_Paused': 'pause.circle',
+            'Task_Resumed': 'play.circle',
+            'Task_Auto_Cancelled': 'xmark.circle'
+        };
+
+        return iconMappings[actionType] || 'circle';
     }
 
     // MARK: - Helper Methods

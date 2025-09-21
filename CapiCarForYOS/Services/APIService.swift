@@ -59,7 +59,7 @@ class APIService {
 
         // In a real app, you'd implement network discovery here
         // For now, fallback to a configurable default
-        return "http://192.168.1.143:3000/api"  // Original as fallback
+        return "http://100.64.1.66:3000/api"  // Updated to current IP
         #endif
     }
     
@@ -226,6 +226,67 @@ class APIService {
         return staffData
     }
     
+    func createStaff(name: String, staffId: String? = nil) async throws -> StaffMember {
+        guard let url = URL(string: "\(baseURL)/staff") else {
+            throw APIError.badURL
+        }
+
+        let requestBody = CreateStaffRequest(name: name, staffId: staffId)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try jsonEncoder.encode(requestBody)
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try jsonDecoder.decode(SingleStaffResponse.self, from: data)
+
+        guard response.success, let newStaff = response.data else {
+            let errorMessage = response.error ?? "Failed to create staff member."
+            throw APIError.serverError(message: errorMessage)
+        }
+        return newStaff
+    }
+
+    func updateStaff(staffId: String, name: String) async throws -> StaffMember {
+        guard let url = URL(string: "\(baseURL)/staff/\(staffId)") else {
+            throw APIError.badURL
+        }
+
+        let requestBody = UpdateStaffRequest(name: name)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try jsonEncoder.encode(requestBody)
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try jsonDecoder.decode(SingleStaffResponse.self, from: data)
+
+        guard response.success, let staffData = response.data else {
+            let errorMessage = response.error ?? "Failed to update staff member."
+            throw APIError.serverError(message: errorMessage)
+        }
+        return staffData
+    }
+
+    func deleteStaff(staffId: String) async throws {
+        guard let url = URL(string: "\(baseURL)/staff/\(staffId)") else {
+            throw APIError.badURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try jsonDecoder.decode(DeleteStaffResponse.self, from: data)
+
+        guard response.success else {
+            let errorMessage = response.error ?? "Failed to delete staff member."
+            throw APIError.serverError(message: errorMessage)
+        }
+    }
+
     func checkInStaff(staffId: String, action: CheckInAction) async throws -> CheckInResult {
         guard let url = URL(string: "\(baseURL)/staff/checkin") else {
             throw APIError.badURL
@@ -281,6 +342,21 @@ class APIService {
             throw APIError.serverError(message: errorMessage)
         }
     }
+
+    func fetchTaskWorkHistory(taskId: String) async throws -> [WorkHistoryEntry] {
+        guard let url = URL(string: "\(baseURL)/tasks/\(taskId)/history") else {
+            throw APIError.badURL
+        }
+
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let response = try jsonDecoder.decode(WorkHistoryResponse.self, from: data)
+
+        guard response.success else {
+            throw APIError.serverError(message: "Failed to fetch work history")
+        }
+
+        return response.data
+    }
 }
 
 // MARK: - API Request & Response Models
@@ -296,6 +372,15 @@ struct TaskActionRequest: Codable {
 struct UpdateChecklistRequest: Codable {
     let checklistJson: String
     let operatorId: String
+}
+
+struct CreateStaffRequest: Codable {
+    let name: String
+    let staffId: String?
+}
+
+struct UpdateStaffRequest: Codable {
+    let name: String
 }
 
 struct CheckInRequest: Codable {
@@ -340,6 +425,18 @@ struct StaffResponse: Codable {
     let error: String?
 }
 
+struct SingleStaffResponse: Codable {
+    let success: Bool
+    let data: StaffMember?
+    let error: String?
+}
+
+struct DeleteStaffResponse: Codable {
+    let success: Bool
+    let message: String?
+    let error: String?
+}
+
 struct CheckInResponse: Codable {
     let success: Bool
     let data: CheckInResult?
@@ -356,6 +453,11 @@ struct CheckInResult: Codable {
 struct IssueReportResponse: Codable {
     let success: Bool
     let error: String?
+}
+
+struct WorkHistoryResponse: Codable {
+    let success: Bool
+    let data: [WorkHistoryEntry]
 }
 
 // MARK: - Enums

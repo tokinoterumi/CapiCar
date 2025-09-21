@@ -233,12 +233,10 @@ router.post('/action', async (req, res) => {
                 break;
 
             case TaskAction.RESOLVE_CORRECTION:
-                // Determine where to go after correction based on error type
-                const targetStatus = payload?.errorType === 'PICKING_ERROR' ? TaskStatus.PICKED : TaskStatus.PACKED;
-                
+                // Complete the task directly - no need for further inspection after correction
                 updatedTask = await airtableService.updateTaskStatus(
                     task_id,
-                    targetStatus,
+                    TaskStatus.COMPLETED,
                     operator_id
                 );
 
@@ -248,8 +246,8 @@ router.post('/action', async (req, res) => {
                         task_id,
                         TaskAction.RESOLVE_CORRECTION,
                         TaskStatus.CORRECTING,
-                        targetStatus,
-                        `Resolved correction${payload?.newTrackingNumber ? '. New tracking: ' + payload.newTrackingNumber : ''}`
+                        TaskStatus.COMPLETED,
+                        `Task completed via correction workflow${payload?.newTrackingNumber ? '. New tracking: ' + payload.newTrackingNumber : ''}`
                     );
                 }
                 break;
@@ -403,6 +401,29 @@ router.put('/:id/checklist', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Failed to update checklist',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+// GET /api/tasks/:id/history
+// Get work history/audit log for a specific task
+router.get('/:id/history', async (req, res) => {
+    try {
+        const task_id = req.params.id;
+
+        const workHistory = await airtableService.getTaskWorkHistory(task_id);
+
+        res.json({
+            success: true,
+            data: workHistory
+        });
+
+    } catch (error) {
+        console.error('Get task history error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch task history',
             message: error instanceof Error ? error.message : 'Unknown error'
         });
     }

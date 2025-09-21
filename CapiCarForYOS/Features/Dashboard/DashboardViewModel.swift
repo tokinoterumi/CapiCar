@@ -12,34 +12,27 @@ class DashboardViewModel: ObservableObject {
     
     // MARK: - Dependencies
 
-    private let apiService: APIService
+    private let offlineAPIService = OfflineAPIService.shared
 
     // MARK: - Initialization
 
     init(apiService: APIService? = nil) {
-        self.apiService = apiService ?? APIService.shared
+        // Keep parameter for compatibility, but use OfflineAPIService
     }
     
     // MARK: - Public Methods
     
     /// Fetches all the necessary data for the dashboard from the backend API.
     func fetchDashboardData() async {
-        // Skip API call in preview/debug context
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
-            // Provide mock data for previews
-            await loadMockData()
-            return
-        }
-        #endif
-        
+
+
         // 1. Set initial state.
         self.isLoading = true
         self.errorMessage = nil
         
         do {
-            // 2. Await the result directly from APIService
-            let fetchedGroupedTasks = try await apiService.fetchDashboardTasks()
+            // 2. Await the result from OfflineAPIService
+            let fetchedGroupedTasks = try await offlineAPIService.fetchDashboardTasks()
 
             // 3. On success, update the published property.
             self.groupedTasks = fetchedGroupedTasks
@@ -53,49 +46,6 @@ class DashboardViewModel: ObservableObject {
         // 5. Ensure isLoading is set to false once the operation completes.
         self.isLoading = false
     }
-    
-    #if DEBUG
-    private func loadMockData() async {
-        self.isLoading = true
-        self.errorMessage = nil
-        
-        // Simulate network delay
-        try? await Task.sleep(for: .milliseconds(500))
-        
-        // Mock grouped tasks (simplified structure)
-        self.groupedTasks = GroupedTasks(
-            pending: [
-                FulfillmentTask(
-                    id: "mock1",
-                    orderName: "#1001",
-                    status: .pending,
-                    shippingName: "John Doe",
-                    createdAt: Date().ISO8601Format(),
-                    checklistJson: "[]",
-                    currentOperator: nil
-                )
-            ],
-            picking: [
-                FulfillmentTask(
-                    id: "mock2",
-                    orderName: "#1002",
-                    status: .picking,
-                    shippingName: "Jane Smith",
-                    createdAt: Date().ISO8601Format(),
-                    checklistJson: "[]",
-                    currentOperator: StaffMember(id: "s1", name: "Mike")
-                )
-            ],
-            packed: [],
-            inspecting: [],
-            completed: [],
-            paused: [],
-            cancelled: []
-        )
-        
-        self.isLoading = false
-    }
-    #endif
     
     // MARK: - Computed Properties for the View
     

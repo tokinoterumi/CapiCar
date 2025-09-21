@@ -8,15 +8,18 @@ struct TaskPreviewSheet: View {
     // Binding to control navigation to full workflow
     @Binding var showingFullWorkflow: Bool
     @Binding var showingInspectionView: Bool
+    @Binding var showingCorrectionFlow: Bool
 
     // State for current task data
     @State private var currentTask: FulfillmentTask
     @State private var isLoading = false
+    @State private var workHistory: [WorkHistoryEntry] = []
 
-    init(task: FulfillmentTask, showingFullWorkflow: Binding<Bool>, showingInspectionView: Binding<Bool>) {
+    init(task: FulfillmentTask, showingFullWorkflow: Binding<Bool>, showingInspectionView: Binding<Bool>, showingCorrectionFlow: Binding<Bool>) {
         self.initialTask = task
         self._showingFullWorkflow = showingFullWorkflow
         self._showingInspectionView = showingInspectionView
+        self._showingCorrectionFlow = showingCorrectionFlow
         self._currentTask = State(initialValue: task)
     }
 
@@ -335,24 +338,22 @@ struct TaskPreviewSheet: View {
     private var workHistorySection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Image(systemName: "clock.arrow.circlepath")
-                    .foregroundColor(.blue)
-                Text("📋 Work History")
+                Text("Work History")
                     .font(.headline)
                     .fontWeight(.semibold)
             }
 
             VStack(spacing: 12) {
-                ForEach(mockWorkHistory, id: \.timestamp) { entry in
-                    WorkHistoryRow(entry: entry)
+                if workHistory.isEmpty {
+                    Text("No work history available")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding()
+                } else {
+                    ForEach(workHistory, id: \.timestamp) { entry in
+                        WorkHistoryRow(entry: entry)
+                    }
                 }
-            }
-
-            // Completion summary
-            if task.status == .completed {
-                CompletionSummaryView(task: task)
-            } else if task.status == .cancelled {
-                CancellationSummaryView(task: task)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -377,7 +378,9 @@ struct TaskPreviewSheet: View {
                                 dismiss() // Close preview sheet
 
                                 // Navigate based on task status
-                                if shouldNavigateToInspection {
+                                if shouldNavigateToCorrection {
+                                    showingCorrectionFlow = true
+                                } else if shouldNavigateToInspection {
                                     showingInspectionView = true
                                 } else {
                                     showingFullWorkflow = true
@@ -506,98 +509,9 @@ struct TaskPreviewSheet: View {
         }
     }
 
-    // MARK: - Mock Work History Data
-
-    private var mockWorkHistory: [WorkHistoryEntry] {
-        let baseTime = task.createdAtDate
-
-        switch task.status {
-        case .completed:
-            return [
-                WorkHistoryEntry(
-                    timestamp: baseTime,
-                    action: "Task Created",
-                    operatorName: "System",
-                    icon: "plus.circle",
-                    color: .gray
-                ),
-                WorkHistoryEntry(
-                    timestamp: baseTime.addingTimeInterval(300),
-                    action: "Picking Started",
-                    operatorName: "Capybara",
-                    icon: "hand.point.up.braille",
-                    color: .blue
-                ),
-                WorkHistoryEntry(
-                    timestamp: baseTime.addingTimeInterval(900),
-                    action: "All Items Picked",
-                    operatorName: "Capybara",
-                    icon: "checkmark.circle",
-                    color: .blue
-                ),
-                WorkHistoryEntry(
-                    timestamp: baseTime.addingTimeInterval(1200),
-                    action: "Packing Completed",
-                    operatorName: "Capybara",
-                    icon: "shippingbox",
-                    color: .cyan
-                ),
-                WorkHistoryEntry(
-                    timestamp: baseTime.addingTimeInterval(1500),
-                    action: "Inspection Started",
-                    operatorName: "Caterpillar",
-                    icon: "magnifyingglass",
-                    color: .purple
-                ),
-                WorkHistoryEntry(
-                    timestamp: baseTime.addingTimeInterval(1800),
-                    action: "Inspection Passed",
-                    operatorName: "Caterpillar",
-                    icon: "checkmark.seal",
-                    color: .green
-                ),
-                WorkHistoryEntry(
-                    timestamp: baseTime.addingTimeInterval(1900),
-                    action: "Task Completed",
-                    operatorName: "Caterpillar",
-                    icon: "checkmark.circle.fill",
-                    color: .green
-                )
-            ]
-        case .cancelled:
-            return [
-                WorkHistoryEntry(
-                    timestamp: baseTime,
-                    action: "Task Created",
-                    operatorName: "System",
-                    icon: "plus.circle",
-                    color: .gray
-                ),
-                WorkHistoryEntry(
-                    timestamp: baseTime.addingTimeInterval(300),
-                    action: "Picking Started",
-                    operatorName: "Capybara",
-                    icon: "hand.point.up.braille",
-                    color: .blue
-                ),
-                WorkHistoryEntry(
-                    timestamp: baseTime.addingTimeInterval(600),
-                    action: "Exception Reported",
-                    operatorName: "Capybara",
-                    icon: "exclamationmark.triangle",
-                    color: .red
-                ),
-                WorkHistoryEntry(
-                    timestamp: baseTime.addingTimeInterval(900),
-                    action: "Task Cancelled",
-                    operatorName: "Manager",
-                    icon: "xmark.circle.fill",
-                    color: .red
-                )
-            ]
-        default:
-            return []
-        }
+    private var shouldNavigateToCorrection: Bool {
+        // Check if this is a correction task
+        return task.status == .correctionNeeded
     }
 
     // MARK: - Helper Methods
@@ -609,6 +523,11 @@ struct TaskPreviewSheet: View {
             let latestTask = try await OfflineAPIService.shared.fetchTask(id: task.id)
             currentTask = latestTask
             print("TaskPreviewSheet: Updated to latest task data - status: \(latestTask.status), isPaused: \(latestTask.isPaused ?? false)")
+
+            // Fetch work history
+            let history = try await OfflineAPIService.shared.fetchTaskWorkHistory(taskId: task.id)
+            workHistory = history
+            print("TaskPreviewSheet: Fetched \(history.count) work history entries")
         } catch {
             print("Error fetching latest task data: \(error)")
         }
@@ -644,8 +563,6 @@ struct TaskPreviewSheet: View {
             "wrong_item": "Wrong Item / 商品違い",
             "quality_issue": "Quality Issue / 品質問題",
             "packaging_issue": "Packaging Issue / 梱包問題",
-            "system_error": "System Error / システムエラー",
-            "equipment_failure": "Equipment Failure / 機器故障",
             "other": "Other / その他"
         ]
 
@@ -721,14 +638,7 @@ struct TaskPreviewSheet: View {
 }
 
 // MARK: - Work History Data Structure
-
-struct WorkHistoryEntry {
-    let timestamp: Date
-    let action: String
-    let operatorName: String
-    let icon: String
-    let color: Color
-}
+// WorkHistoryEntry is now defined in Models/TaskModels.swift
 
 // MARK: - Work History Components
 
@@ -737,16 +647,8 @@ struct WorkHistoryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Timeline indicator
-            VStack {
-                Circle()
-                    .fill(entry.color)
-                    .frame(width: 12, height: 12)
-            }
-
             // Action icon
             Image(systemName: entry.icon)
-                .foregroundColor(entry.color)
                 .font(.body)
                 .frame(width: 20)
 
@@ -763,7 +665,7 @@ struct WorkHistoryRow: View {
 
                     Spacer()
 
-                    Text(entry.timestamp, style: .time)
+                    Text(formatTimestamp(entry.timestamp))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -773,79 +675,16 @@ struct WorkHistoryRow: View {
         }
         .padding(.vertical, 4)
     }
-}
 
-struct CompletionSummaryView: View {
-    let task: FulfillmentTask
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Divider()
-
-            HStack {
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundColor(.green)
-                Text("✅ Task Completed Successfully")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.green)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Final Details:")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-
-                Text("• All items picked and packed")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Text("• Quality inspection passed")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Text("• Ready for shipment")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+    // Helper function to format timestamp string
+    private func formatTimestamp(_ timestampString: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: timestampString) {
+            let timeFormatter = DateFormatter()
+            timeFormatter.timeStyle = .short
+            return timeFormatter.string(from: date)
         }
-        .padding(.top, 8)
-    }
-}
-
-struct CancellationSummaryView: View {
-    let task: FulfillmentTask
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Divider()
-
-            HStack {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.red)
-                Text("❌ Task Cancelled")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.red)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Reason:")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-
-                Text("• Exception reported during picking")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Text("• Unable to fulfill order")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding(.top, 8)
+        return timestampString // fallback to original string
     }
 }
 
@@ -891,7 +730,8 @@ struct TaskPreviewSheet_Previews: PreviewProvider {
         return TaskPreviewSheet(
             task: mockTask,
             showingFullWorkflow: .constant(false),
-            showingInspectionView: .constant(false)
+            showingInspectionView: .constant(false),
+            showingCorrectionFlow: .constant(false)
         )
         .environmentObject(mockStaffManager)
         .environmentObject(DashboardViewModel())

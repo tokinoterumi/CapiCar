@@ -139,4 +139,102 @@ router.post('/checkin', async (req, res) => {
     }
 });
 
+// POST /api/staff
+// Create a new staff member
+router.post('/', async (req, res) => {
+    try {
+        const { name, staff_id } = req.body;
+
+        if (!name) {
+            return res.status(400).json({
+                success: false,
+                error: 'Staff name is required'
+            });
+        }
+
+        const newStaff = await airtableService.createStaff(name, staff_id);
+
+        res.status(201).json({
+            success: true,
+            data: newStaff
+        });
+
+    } catch (error) {
+        console.error('Create staff error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to create staff member',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+// PUT /api/staff/:id
+// Update an existing staff member
+router.put('/:id', async (req, res) => {
+    try {
+        const staffId = req.params.id;
+        const { name } = req.body;
+
+        if (!name) {
+            return res.status(400).json({
+                success: false,
+                error: 'Staff name is required'
+            });
+        }
+
+        const updatedStaff = await airtableService.updateStaff(staffId, name);
+
+        if (!updatedStaff) {
+            return res.status(404).json({
+                success: false,
+                error: 'Staff member not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: updatedStaff
+        });
+
+    } catch (error) {
+        console.error('Update staff error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update staff member',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+// DELETE /api/staff/:id
+// Delete a staff member
+router.delete('/:id', async (req, res) => {
+    try {
+        const staffId = req.params.id;
+
+        const success = await airtableService.deleteStaff(staffId);
+
+        if (!success) {
+            return res.status(404).json({
+                success: false,
+                error: 'Staff member not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Staff member deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('Delete staff error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete staff member',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
 export default router;

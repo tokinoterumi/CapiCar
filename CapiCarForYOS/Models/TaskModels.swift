@@ -30,6 +30,15 @@ struct StaffMember: Codable, Equatable, Identifiable, Hashable {
     let name: String
 }
 
+struct WorkHistoryEntry: Codable, Identifiable {
+    let id: String
+    let timestamp: String
+    let action: String
+    let operatorName: String
+    let icon: String
+    let details: String
+}
+
 enum TaskStatus: String, CaseIterable, Codable {
     case pending = "Pending"
     case picking = "Picking"
