@@ -180,10 +180,7 @@ struct SyncStatusWidget_Previews: PreviewProvider {
     static var previews: some View {
         VStack(spacing: 20) {
             SyncStatusWidget()
-                .environmentObject({
-                    let manager = SyncManager()
-                    return manager
-                }())
+                .environmentObject(SyncManager.shared)
         }
         .padding()
         .previewLayout(.sizeThatFits)

@@ -1,10 +1,3 @@
-//
-//  CapiCar_for_YOSApp.swift
-//  CapiCar for YOS
-//
-//  Created by Terumi on 9/2/07.
-//
-
 import SwiftUI
 import SwiftData
 
@@ -15,18 +8,12 @@ struct CapiCar_for_YOSApp: App {
     
     @StateObject private var authManager = AuthenticationManager()
     @StateObject private var staffManager = StaffManager()
-    @StateObject private var syncManager: SyncManager
-    
     // MARK: - SwiftData Container
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
-            LocalFulfillmentTask.self,
-            LocalStaffMember.self,
-            LocalChecklistItem.self,
-            LocalAuditLog.self,
-            LocalSyncState.self
+            LocalTask.self,
+            LocalChecklistItem.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -44,19 +31,19 @@ struct CapiCar_for_YOSApp: App {
         }
     }()
     
-    // Initialize SyncManager after other components
-    init() {
-        // Initialize SyncManager last to avoid circular dependencies
-        let manager = SyncManager()
-        self._syncManager = StateObject(wrappedValue: manager)
-    }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(authManager)
                 .environmentObject(staffManager)
-                .environmentObject(syncManager)
+                .environmentObject(SyncManager.shared)
+                .onAppear {
+                    // Initialize DatabaseManager with the shared container
+                    Task { @MainActor in
+                        DatabaseManager.shared.initialize(with: sharedModelContainer)
+                    }
+                }
         }
         .modelContainer(sharedModelContainer)
     }

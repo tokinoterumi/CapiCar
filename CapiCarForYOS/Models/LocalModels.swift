@@ -1,252 +1,289 @@
 import Foundation
 import SwiftData
 
-// MARK: - SwiftData Models for Local Persistence
+// MARK: - Enums for Local State Management
 
+/// 本地任務的同步狀態
+/// 用於追蹤任務是否已與伺服器同步。
+enum SyncStatus: String, Codable {
+    /// 資料已與伺服器同步。
+    case synced
+
+    /// 本地有變更，等待上傳至伺服器。
+    case pendingSync
+
+    /// 任務已在本地暫停，等待同步暫停狀態回伺服器。
+    case pausedPendingSync
+
+    /// 同步時發生錯誤。
+    case error
+}
+
+/// 本地任務在其生命週期中的狀態
+/// 這區別於伺服器的狀態，專門為離線操作設計。
+enum LocalTaskStatus: String, Codable {
+    /// 任務待領取 (Phase 1: Discovery)
+    case pending
+
+    /// 任務已被領取並正在執行中。
+    case picking
+
+    /// 任務撿選完成，等待包裝
+    case picked
+
+    /// 任務已包裝，等待檢查
+    case packed
+
+    /// 任務正在檢查中
+    case inspecting
+
+    /// 任務需要修正
+    case correctionNeeded
+
+    /// 任務正在修正中
+    case correcting
+
+    /// 任務已在本地完成，等待同步。
+    case completed
+
+    /// 任務已在本地取消，等待同步。
+    case cancelled
+
+    /// 任務已在本地暫停，等待同步暫停狀態回伺服器。
+    case pausedPendingSync
+}
+
+/// 本地檢查清單項目的狀態
+enum LocalChecklistItemStatus: String, Codable {
+    /// 項目等待處理。
+    case pending
+    
+    /// 項目已完成掃描或確認。
+    case completed
+    
+    /// 項目被標記為損壞或有問題。
+    case damaged
+}
+
+
+// MARK: - SwiftData Models
+
+/// `LocalTask` 代表儲存在裝置本地資料庫中的一個任務。
+/// 這是 Offline-First 策略的核心，所有操作都應先更新此模型。
 @Model
-final class LocalFulfillmentTask {
-    @Attribute(.unique) var id: String
-    var orderName: String
-    var status: String
-    var shippingName: String
-    var createdAt: Date
-    var checklistJson: String
-    var currentOperatorId: String?
-    var currentOperatorName: String?
+final class LocalTask {
+    /// 來自伺服器的唯一識別碼，用於同步。
+    @Attribute(.unique)
+    var id: String
     
-    // Sync tracking
-    var lastSyncedAt: Date?
-    var needsSync: Bool = false
-    var isDeleted: Bool = false
+    var name: String
+    var type: String
+    var soNumber: String
     
-    // Offline state tracking
-    var localModifiedAt: Date = Date()
-    var syncVersion: Int = 0
+    /// 分配給此任務的作業人員 ID。
+    var assignedStaffId: String
     
-    init(id: String, orderName: String, status: String, shippingName: String, createdAt: Date, checklistJson: String, currentOperatorId: String? = nil, currentOperatorName: String? = nil) {
+    /// 分配給此任務的作業人員姓名 (用於 UI 顯示)。
+    var assignedStaffName: String
+    
+    /// 任務在本地的狀態 (例如：正在執行、已完成待同步)。
+    var status: LocalTaskStatus
+    
+    /// 標記任務是否已暫停。
+    var isPaused: Bool
+    
+    /// 此任務在本地最後被修改的時間戳。
+    var lastModifiedLocally: Date
+    
+    /// 此任務與伺服器的同步狀態。
+    var syncStatus: SyncStatus
+    
+    /// 與此任務關聯的所有檢查項目列表。
+    /// 設定 `.cascade` 可以在刪除任務時，一併刪除其下的所有 checklist items。
+    @Relationship(deleteRule: .cascade, inverse: \LocalChecklistItem.task)
+    var checklistItems: [LocalChecklistItem] = []
+    
+    init(id: String, name: String, type: String, soNumber: String, assignedStaffId: String, assignedStaffName: String, status: LocalTaskStatus = .picking, isPaused: Bool = false) {
         self.id = id
-        self.orderName = orderName
+        self.name = name
+        self.type = type
+        self.soNumber = soNumber
+        self.assignedStaffId = assignedStaffId
+        self.assignedStaffName = assignedStaffName
         self.status = status
-        self.shippingName = shippingName
-        self.createdAt = createdAt
-        self.checklistJson = checklistJson
-        self.currentOperatorId = currentOperatorId
-        self.currentOperatorName = currentOperatorName
-        self.localModifiedAt = Date()
-        self.needsSync = false
+        self.isPaused = isPaused
+        self.lastModifiedLocally = Date()
+        self.syncStatus = .pendingSync // 新任務預設為待同步狀態
     }
-    
-    // Convert to domain model
+}
+
+// MARK: - LocalTask Extensions
+
+extension LocalTask {
+    /// Convert LocalTask to FulfillmentTask for UI display
     var asFulfillmentTask: FulfillmentTask {
-        let currentOperator: StaffMember? = {
-            guard let operatorId = currentOperatorId,
-                  let operatorName = currentOperatorName else { return nil }
-            return StaffMember(id: operatorId, name: operatorName)
-        }()
-        
+        let taskStatus: TaskStatus
+        switch status {
+        case .pending:
+            taskStatus = .pending
+        case .picking:
+            taskStatus = .picking
+        case .picked:
+            taskStatus = .picked
+        case .packed:
+            taskStatus = .packed
+        case .inspecting:
+            taskStatus = .inspecting
+        case .correctionNeeded:
+            taskStatus = .correctionNeeded
+        case .correcting:
+            taskStatus = .correcting
+        case .completed:
+            taskStatus = .completed
+        case .cancelled:
+            taskStatus = .cancelled
+        case .pausedPendingSync:
+            taskStatus = .pending // Return to pending when paused
+        }
+
+        let currentOperator = StaffMember(id: assignedStaffId, name: assignedStaffName)
+
+        // Convert checklist items back to JSON string
+        let checklistJSON: String
+        if checklistItems.isEmpty {
+            checklistJSON = "[]"
+        } else {
+            let checklistData = checklistItems.map { localItem in
+                ChecklistItem(
+                    id: Int(localItem.id.split(separator: "-").last.flatMap { Int($0) } ?? 0),
+                    sku: localItem.sku,
+                    name: localItem.itemName,
+                    variant_title: "",
+                    quantity_required: localItem.quantity,
+                    image_url: nil,
+                    quantity_picked: localItem.status == .completed ? localItem.quantity : 0,
+                    is_completed: localItem.status == .completed
+                )
+            }
+
+            if let jsonData = try? JSONEncoder().encode(checklistData),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                checklistJSON = jsonString
+            } else {
+                checklistJSON = "[]"
+            }
+        }
+
         return FulfillmentTask(
             id: id,
-            orderName: orderName,
-            status: TaskStatus(rawValue: status) ?? .pending,
-            shippingName: shippingName,
-            createdAt: createdAt.ISO8601Format(),
-            checklistJson: checklistJson,
-            currentOperator: currentOperator
+            orderName: name,
+            status: taskStatus,
+            shippingName: soNumber,
+            createdAt: lastModifiedLocally.ISO8601Format(),
+            checklistJson: checklistJSON,
+            currentOperator: currentOperator,
+            isPaused: isPaused
         )
     }
-    
-    // Update from domain model
-    func update(from task: FulfillmentTask) {
-        self.orderName = task.orderName
-        self.status = task.status.rawValue
-        self.shippingName = task.shippingName
-        self.checklistJson = task.checklistJson
-        self.currentOperatorId = task.currentOperator?.id
-        self.currentOperatorName = task.currentOperator?.name
-        self.localModifiedAt = Date()
-        self.needsSync = true
+
+    /// Create LocalTask from FulfillmentTask (for task claiming)
+    static func fromFulfillmentTask(_ task: FulfillmentTask, assignedTo staff: StaffMember) -> LocalTask {
+        let localTask = LocalTask(
+            id: task.id,
+            name: task.orderName,
+            type: "Fulfillment",
+            soNumber: task.shippingName,
+            assignedStaffId: staff.id,
+            assignedStaffName: staff.name,
+            status: .picking,
+            isPaused: task.isPaused ?? false
+        )
+
+        // Parse checklist from JSON
+        if let checklistData = task.checklistJson.data(using: .utf8),
+           let checklistItems = try? JSONDecoder().decode([ChecklistItem].self, from: checklistData) {
+            localTask.checklistItems = checklistItems.map { apiItem in
+                let localItem = LocalChecklistItem(
+                    id: "\(task.id)-\(apiItem.id)",
+                    itemName: apiItem.name,
+                    sku: apiItem.sku,
+                    barcode: apiItem.sku,
+                    quantity: apiItem.quantity_required,
+                    status: apiItem.is_completed ? .completed : .pending
+                )
+                localItem.task = localTask
+                return localItem
+            }
+        }
+
+        return localTask
+    }
+
+    /// Create LocalTask from FulfillmentTask without an assigned operator
+    /// Used for tasks that haven't been claimed yet (e.g., pending tasks)
+    static func fromFulfillmentTaskWithoutOperator(_ task: FulfillmentTask) -> LocalTask {
+        let localTask = LocalTask(
+            id: task.id,
+            name: task.orderName,
+            type: "Fulfillment",
+            soNumber: task.shippingName,
+            assignedStaffId: "", // No operator assigned yet
+            assignedStaffName: "", // No operator assigned yet
+            status: LocalTaskStatus(from: task.status),
+            isPaused: task.isPaused ?? false
+        )
+
+        // Parse checklist from JSON
+        if let checklistData = task.checklistJson.data(using: .utf8),
+           let checklistItems = try? JSONDecoder().decode([ChecklistItem].self, from: checklistData) {
+            localTask.checklistItems = checklistItems.map { apiItem in
+                let localItem = LocalChecklistItem(
+                    id: "\(task.id)-\(apiItem.id)",
+                    itemName: apiItem.name,
+                    sku: apiItem.sku,
+                    barcode: apiItem.sku,
+                    quantity: apiItem.quantity_required,
+                    status: apiItem.is_completed ? .completed : .pending
+                )
+                localItem.task = localTask
+                localItem.scannedAt = apiItem.is_completed ? Date() : nil
+                return localItem
+            }
+        }
+
+        return localTask
     }
 }
 
-@Model
-final class LocalStaffMember {
-    @Attribute(.unique) var id: String
-    var name: String
-    var isCheckedIn: Bool = false
-    var checkedInAt: Date?
-    
-    // Sync tracking
-    var lastSyncedAt: Date?
-    var needsSync: Bool = false
-    
-    init(id: String, name: String) {
-        self.id = id
-        self.name = name
-    }
-    
-    // Convert to domain model
-    var asStaffMember: StaffMember {
-        StaffMember(id: id, name: name)
-    }
-    
-    // Update from domain model
-    func update(from staff: StaffMember) {
-        self.name = staff.name
-        self.needsSync = true
-    }
-}
 
+/// `LocalChecklistItem` 代表一個任務中的單個檢查項目。
 @Model
 final class LocalChecklistItem {
-    @Attribute(.unique) var id: String
-    var taskId: String
-    var itemId: Int
+    /// 來自伺服器的唯一識別碼。
+    @Attribute(.unique)
+    var id: String
+    
+    var itemName: String
     var sku: String
-    var name: String
-    var variantTitle: String
-    var quantityRequired: Int
-    var imageUrl: String?
-    var quantityPicked: Int = 0
-    var isCompleted: Bool = false
+    var barcode: String
+    var quantity: Int
     
-    // Sync tracking
-    var lastSyncedAt: Date?
-    var needsSync: Bool = false
-    var localModifiedAt: Date = Date()
+    /// 項目在本地的狀態 (例如：待處理、已完成)。
+    var status: LocalChecklistItemStatus
     
-    init(taskId: String, itemId: Int, sku: String, name: String, variantTitle: String, quantityRequired: Int, imageUrl: String? = nil) {
-        self.id = "\(taskId)_\(itemId)"
-        self.taskId = taskId
-        self.itemId = itemId
-        self.sku = sku
-        self.name = name
-        self.variantTitle = variantTitle
-        self.quantityRequired = quantityRequired
-        self.imageUrl = imageUrl
-    }
+    /// 項目被掃描或確認的時間。
+    var scannedAt: Date?
     
-    // Convert to domain model
-    var asChecklistItem: ChecklistItem {
-        ChecklistItem(
-            id: itemId,
-            sku: sku,
-            name: name,
-            variant_title: variantTitle,
-            quantity_required: quantityRequired,
-            image_url: imageUrl,
-            quantity_picked: quantityPicked,
-            is_completed: isCompleted
-        )
-    }
+    /// 此項目所屬的任務 (多對一關係)。
+    var task: LocalTask?
     
-    // Update from domain model
-    func update(from item: ChecklistItem) {
-        self.quantityPicked = item.quantity_picked
-        self.isCompleted = item.is_completed
-        self.localModifiedAt = Date()
-        self.needsSync = true
-    }
-}
-
-@Model
-final class LocalAuditLog {
-    @Attribute(.unique) var id: String
-    var timestamp: Date
-    var operatorName: String
-    var taskOrderName: String
-    var actionType: String
-    var details: String?
-    
-    // Sync tracking
-    var lastSyncedAt: Date?
-    var needsSync: Bool = false
-    
-    init(id: String, timestamp: Date, operatorName: String, taskOrderName: String, actionType: String, details: String? = nil) {
+    init(id: String, itemName: String, sku: String, barcode: String, quantity: Int, status: LocalChecklistItemStatus = .pending) {
         self.id = id
-        self.timestamp = timestamp
-        self.operatorName = operatorName
-        self.taskOrderName = taskOrderName
-        self.actionType = actionType
-        self.details = details
-        self.needsSync = false
-    }
-    
-    // Convert to domain model
-    var asAuditLog: AuditLog {
-        AuditLog(
-            id: id,
-            timestamp: timestamp,
-            operatorName: operatorName,
-            taskOrderName: taskOrderName,
-            actionType: actionType,
-            details: details
-        )
+        self.itemName = itemName
+        self.sku = sku
+        self.barcode = barcode
+        self.quantity = quantity
+        self.status = status
     }
 }
 
-@Model
-final class LocalSyncState {
-    @Attribute(.unique) var id: String = "singleton"
-    var lastFullSyncAt: Date?
-    var isOnline: Bool = true
-    var pendingActionCount: Int = 0
-    var lastErrorMessage: String?
-    var lastErrorAt: Date?
-    
-    init() {
-        self.id = "singleton"
-    }
-}
-
-// MARK: - Conversion Extensions
-
-extension FulfillmentTask {
-    func asLocalTask() -> LocalFulfillmentTask {
-        LocalFulfillmentTask(
-            id: id,
-            orderName: orderName,
-            status: status.rawValue,
-            shippingName: shippingName,
-            createdAt: ISO8601DateFormatter().date(from: createdAt) ?? Date(),
-            checklistJson: checklistJson,
-            currentOperatorId: currentOperator?.id,
-            currentOperatorName: currentOperator?.name
-        )
-    }
-}
-
-extension StaffMember {
-    func asLocalStaff() -> LocalStaffMember {
-        LocalStaffMember(id: id, name: name)
-    }
-}
-
-extension ChecklistItem {
-    func asLocalItem(taskId: String) -> LocalChecklistItem {
-        let localItem = LocalChecklistItem(
-            taskId: taskId,
-            itemId: id,
-            sku: sku,
-            name: name,
-            variantTitle: variant_title,
-            quantityRequired: quantity_required,
-            imageUrl: image_url
-        )
-        localItem.quantityPicked = quantity_picked
-        localItem.isCompleted = is_completed
-        return localItem
-    }
-}
-
-extension AuditLog {
-    func asLocalLog() -> LocalAuditLog {
-        LocalAuditLog(
-            id: id,
-            timestamp: timestamp,
-            operatorName: operatorName,
-            taskOrderName: taskOrderName,
-            actionType: actionType,
-            details: details
-        )
-    }
-}
