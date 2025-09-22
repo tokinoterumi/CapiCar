@@ -17,16 +17,16 @@ struct ContentView: View {
     private func selectTask(_ task: FulfillmentTask) {
         print("🔍 ContentView: Selected task \(task.orderName)")
 
-        // Always fetch fresh task data to avoid stale status
-        if let freshTask = findFreshTask(taskId: task.id) {
-            selectedTask = freshTask
-            print("🔍 ContentView: Using fresh task data with status \(freshTask.status)")
-        } else {
-            selectedTask = task
-            print("🔍 ContentView: Using passed task data with status \(task.status)")
-        }
+        // Use the passed task directly to avoid timing issues with dashboard updates
+        // The TaskPreviewSheet will fetch fresh data internally
+        selectedTask = task
+        print("🔍 ContentView: selectedTask set to: \(task.orderName)")
 
-        showingTaskPreview = true
+        // Use DispatchQueue to ensure state updates don't conflict
+        DispatchQueue.main.async {
+            self.showingTaskPreview = true
+            print("🔍 ContentView: showingTaskPreview set to true")
+        }
     }
 
     // Helper to find fresh task data from the dashboard
@@ -65,6 +65,7 @@ struct ContentView: View {
             // Staff selector at the top of all screens
             StaffSelector()
                 .environmentObject(staffManager)
+                .environmentObject(dashboardViewModel)
 
             // Tab content below
             TabView(selection: $selectedTab) {
@@ -91,6 +92,9 @@ struct ContentView: View {
             }
         }
         .accentColor(.blue)
+        .onChange(of: selectedTask) { oldValue, newValue in
+            print("🔍 ContentView: selectedTask changed from \(oldValue?.orderName ?? "nil") to \(newValue?.orderName ?? "nil")")
+        }
         // Centralized sheet presentations
         .sheet(isPresented: $showingTaskPreview) {
             if let task = selectedTask {
@@ -111,6 +115,8 @@ struct ContentView: View {
                 Text("No task selected")
                     .onAppear {
                         print("🔍 ContentView: selectedTask is nil in sheet!")
+                        print("🔍 ContentView: showingTaskPreview = \(showingTaskPreview)")
+                        print("🔍 ContentView: Dashboard groupedTasks available: \(dashboardViewModel.groupedTasks != nil)")
                     }
             }
         }
@@ -134,7 +140,14 @@ struct ContentView: View {
             }
         }
         // CorrectionFlowView sheet presentation
-        .sheet(isPresented: $showingCorrectionFlow) {
+        .sheet(isPresented: $showingCorrectionFlow, onDismiss: {
+            // Refresh dashboard data when CorrectionFlowView is dismissed
+            Task {
+                await dashboardViewModel.fetchDashboardData()
+            }
+            // Clear selected task to prevent stale data in TaskPreviewSheet
+            selectedTask = nil
+        }) {
             if let task = selectedTask {
                 NavigationStack {
                     CorrectionFlowView(
@@ -153,7 +166,7 @@ struct ContentView: View {
             }
         }
         // InspectionView sheet presentation
-        .sheet(isPresented: $showingInspectionView) {
+        .fullScreenCover(isPresented: $showingInspectionView) {
             if let task = selectedTask {
                 NavigationStack {
                     InspectionView(

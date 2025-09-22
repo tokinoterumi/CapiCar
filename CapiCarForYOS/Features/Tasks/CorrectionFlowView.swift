@@ -51,7 +51,7 @@ struct CorrectionFlowView: View {
                 .font(.title2)
                 .fontWeight(.bold)
 
-            Text("Order: \(viewModel.task.orderName)")
+            Text("\(viewModel.task.orderName)")
                 .font(.headline)
                 .foregroundColor(.secondary)
         }

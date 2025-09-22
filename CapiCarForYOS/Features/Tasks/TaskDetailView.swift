@@ -14,8 +14,7 @@ struct TaskDetailView: View {
     // State for correction flow
     @State private var showingCorrectionFlow = false
 
-    // State for inspection flow
-    @State private var showingInspectionView = false
+    // Removed inspection flow - now handled separately through TaskPreviewSheet
 
     // State for barcode scanning
     @State private var showingBarcodeScanner = false
@@ -107,13 +106,6 @@ struct TaskDetailView: View {
                 currentOperator: viewModel.currentOperator
             )
         }
-        // Inspection view sheet
-        .sheet(isPresented: $showingInspectionView) {
-            InspectionView(
-                task: viewModel.task,
-                currentOperator: viewModel.currentOperator
-            )
-        }
         // Report issue view sheet
         .sheet(isPresented: $showingReportIssueView) {
             ReportIssueView(
@@ -180,13 +172,6 @@ struct TaskDetailView: View {
             // Status-specific secondary actions
             if viewModel.task.status == .packed || viewModel.task.status == .inspecting {
                 HStack(spacing: 12) {
-                    PrimaryButton(
-                        title: "Detailed Inspection",
-                        isSecondary: true
-                    ) {
-                        showingInspectionView = true
-                    }
-
                     if viewModel.task.status == .inspecting {
                         PrimaryButton(
                             title: "Fail Inspection",
@@ -235,7 +220,6 @@ struct TaskDetailView: View {
             }
         }
         .padding()
-        .background(.regularMaterial)
     }
 
     private var floatingBarcodeScanButton: some View {

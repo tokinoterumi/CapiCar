@@ -124,32 +124,26 @@ class OfflineAPIService {
     // MARK: - Task API (Offline-First)
     
     func fetchTask(id: String) async throws -> FulfillmentTask {
-        // Try local first
-        if let localTask = try databaseManager.fetchLocalTask(id: id) {
-            let task = localTask.asFulfillmentTask
-            
-            // Try to fetch fresh data in background if online
-            if syncManager.isOnline {
-                Task {
-                    do {
-                        let freshTask = try await apiService.fetchTask(id: id)
-                        try databaseManager.updateTask(freshTask)
-                    } catch {
-                        print("Background fetch failed: \(error)")
-                    }
-                }
-            }
-            
-            return task
-        }
-        
-        // If not in local database and online, fetch from server
+        // If online, always fetch fresh data first
         if syncManager.isOnline {
-            let task = try await apiService.fetchTask(id: id)
-            try databaseManager.updateTask(task)
-            return task
+            do {
+                print("🔍 OfflineAPIService: Fetching fresh task from API for \(id)")
+                let freshTask = try await apiService.fetchTask(id: id)
+                try databaseManager.updateTask(freshTask)
+                print("🔍 OfflineAPIService: Fresh task fetched and saved - status: \(freshTask.status)")
+                return freshTask
+            } catch {
+                print("🔍 OfflineAPIService: API fetch failed, falling back to local: \(error)")
+                // Fall back to local data if API fails
+            }
         }
-        
+
+        // Use local data as fallback
+        if let localTask = try databaseManager.fetchLocalTask(id: id) {
+            print("🔍 OfflineAPIService: Using local task data - status: \(localTask.asFulfillmentTask.status)")
+            return localTask.asFulfillmentTask
+        }
+
         throw APIError.serverError(message: "Task not found locally and device is offline")
     }
     

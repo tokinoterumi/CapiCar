@@ -12,8 +12,15 @@ struct TaskPreviewSheet: View {
 
     // State for current task data
     @State private var currentTask: FulfillmentTask
-    @State private var isLoading = false
+    @State private var isLoading = true  // Start with loading state
     @State private var workHistory: [WorkHistoryEntry] = []
+
+    // Navigation intent enum
+    private enum NavigationIntent {
+        case correction
+        case inspection
+        case workflow
+    }
 
     init(task: FulfillmentTask, showingFullWorkflow: Binding<Bool>, showingInspectionView: Binding<Bool>, showingCorrectionFlow: Binding<Bool>) {
         self.initialTask = task
@@ -30,50 +37,59 @@ struct TaskPreviewSheet: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    
-                    // MARK: - Task Header
-                    taskHeaderSection
-                    
-                    // MARK: - Customer Information
-                    customerInfoSection
-                    
-                    // MARK: - Quick Checklist Preview
-                    checklistPreviewSection
-
-                    // MARK: - Exception Notes (if applicable)
-                    if task.inExceptionPool == true {
-                        exceptionNotesSection
-                    }
-
-                    // MARK: - Correction Notes (if applicable)
-                    if task.status == .correctionNeeded {
-                        correctionNotesSection
-                    }
-
-                    // MARK: - Work History (for completed/cancelled tasks)
-                    if task.status == .completed || task.status == .cancelled {
-                        workHistorySection
-                    }
-
-                    // MARK: - Task Status
-                    taskStatusSection
+            if isLoading {
+                VStack {
+                    Spacer()
+                    ProgressView("Loading task data...")
+                        .font(.headline)
+                    Spacer()
                 }
-                .padding()
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+
+                        // MARK: - Task Header
+                        taskHeaderSection
+
+                        // MARK: - Customer Information
+                        customerInfoSection
+
+                        // MARK: - Quick Checklist Preview
+                        checklistPreviewSection
+
+                        // MARK: - Exception Notes (if applicable)
+                        if task.inExceptionPool == true {
+                            exceptionNotesSection
+                        }
+
+                        // MARK: - Correction Notes (if applicable)
+                        if task.status == .correctionNeeded {
+                            correctionNotesSection
+                        }
+
+                        // MARK: - Work History (for completed/cancelled tasks)
+                        if task.status == .completed || task.status == .cancelled {
+                            workHistorySection
+                        }
+
+                        // MARK: - Task Status
+                        taskStatusSection
+                    }
+                    .padding()
+                }
+                .navigationTitle("Task Preview")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar(content: {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Close") {
+                            dismiss()
+                        }
+                    }
+                })
+
+                // MARK: - Action Button
+                actionButtonSection
             }
-            .navigationTitle("Task Preview")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(content: {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                }
-            })
-            
-            // MARK: - Action Button
-            actionButtonSection
         }
         .onAppear {
             Task {
@@ -363,26 +379,41 @@ struct TaskPreviewSheet: View {
     }
 
     private var actionButtonSection: some View {
-        VStack(spacing: 12) {
+        // Capture navigation intent at render time to prevent timing issues
+        let navigationIntent = determineNavigationIntent()
+
+        return VStack(spacing: 12) {
             if canStartTask {
                 PrimaryButton(
                     title: primaryActionTitle,
                     action: {
                         Task {
+                            print("🔍 NAVIGATION DEBUG:")
+                            print("  - Task status at button press: \(task.status.rawValue)")
+                            print("  - Task isPaused: \(task.isPaused ?? false)")
+                            print("  - Button title: \(primaryActionTitle)")
+                            print("  - Navigation intent: \(navigationIntent)")
+
                             // If this is a paused task, resume it first
                             if task.isPaused == true {
+                                print("  - Resuming paused task...")
                                 await resumeTask()
+                                print("  - Task resumed. New status: \(task.status.rawValue)")
                             }
 
                             await MainActor.run {
                                 dismiss() // Close preview sheet
 
-                                // Navigate based on task status
-                                if shouldNavigateToCorrection {
+                                // Navigate based on captured intent (from render time)
+                                switch navigationIntent {
+                                case .correction:
+                                    print("  - Navigating to CorrectionFlowView")
                                     showingCorrectionFlow = true
-                                } else if shouldNavigateToInspection {
+                                case .inspection:
+                                    print("  - Navigating to InspectionView")
                                     showingInspectionView = true
-                                } else {
+                                case .workflow:
+                                    print("  - Navigating to TaskDetailView (fullWorkflow)")
                                     showingFullWorkflow = true
                                 }
                             }
@@ -399,7 +430,6 @@ struct TaskPreviewSheet: View {
             }
         }
         .padding(.bottom)
-        .background(.regularMaterial)
     }
     
     // MARK: - Computed Properties
@@ -452,6 +482,7 @@ struct TaskPreviewSheet: View {
             case .picking: return "Resume Picking"
             case .inspecting: return "Resume Inspection"
             case .correcting: return "Resume Correction"
+            case .correctionNeeded: return "Resume Correction" // Add this case for paused correction tasks
             default: return "Resume" // Fallback for edge cases
             }
         }
@@ -514,13 +545,33 @@ struct TaskPreviewSheet: View {
         return task.status == .correctionNeeded
     }
 
+    private func determineNavigationIntent() -> NavigationIntent {
+        // Use the current (fresh) task status for navigation decisions
+        // This ensures we navigate based on the actual database state, not stale memory
+        if task.status == .correctionNeeded {
+            return .correction
+        } else if task.status == .packed || task.status == .inspecting || task.status == .inspected {
+            return .inspection
+        } else {
+            return .workflow
+        }
+    }
+
     // MARK: - Helper Methods
 
     private func fetchLatestTaskData() async {
         isLoading = true
 
+        print("🔍 FETCH DEBUG: Starting to fetch task \(task.id)")
+        print("🔍 FETCH DEBUG: Initial task status: \(initialTask.status.rawValue)")
+        print("🔍 FETCH DEBUG: Current task status before fetch: \(currentTask.status.rawValue)")
+
         do {
             let latestTask = try await OfflineAPIService.shared.fetchTask(id: task.id)
+            print("🔍 FETCH DEBUG: Fetched task status: \(latestTask.status.rawValue)")
+            print("🔍 FETCH DEBUG: Fetched task isPaused: \(latestTask.isPaused ?? false)")
+            print("🔍 FETCH DEBUG: Fetched task currentOperator: \(latestTask.currentOperator?.name ?? "nil")")
+
             currentTask = latestTask
             print("TaskPreviewSheet: Updated to latest task data - status: \(latestTask.status), isPaused: \(latestTask.isPaused ?? false)")
 
@@ -529,10 +580,12 @@ struct TaskPreviewSheet: View {
             workHistory = history
             print("TaskPreviewSheet: Fetched \(history.count) work history entries")
         } catch {
+            print("🔍 FETCH DEBUG: Error fetching task data: \(error)")
             print("Error fetching latest task data: \(error)")
         }
 
         isLoading = false
+        print("🔍 FETCH DEBUG: Finished fetching, isLoading set to false")
     }
 
     private func resumeTask() async {
