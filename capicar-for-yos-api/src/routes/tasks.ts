@@ -18,6 +18,11 @@ router.get('/:id', async (req, res) => {
             });
         }
 
+        // Add conflict resolution headers for debugging
+        res.setHeader('X-Last-Modified', task.lastModifiedAt || 'unknown');
+        res.setHeader('X-Server-Timestamp', new Date().toISOString());
+        res.setHeader('X-Operation-Sequence', task.operationSequence?.toString() || '0');
+
         res.json({
             success: true,
             data: task
@@ -61,18 +66,6 @@ router.post('/action', async (req, res) => {
                     TaskStatus.PICKING,
                     operator_id
                 );
-
-                // Log the action
-                if (operator_id) {
-                    await airtableService.logAction(
-                        operator_id,
-                        task_id,
-                        'START_PICKING',
-                        'Pending',
-                        'Picking',
-                        'Started picking process'
-                    );
-                }
                 break;
 
             case TaskAction.COMPLETE_PICKING:
@@ -81,18 +74,6 @@ router.post('/action', async (req, res) => {
                     TaskStatus.PICKED,
                     operator_id
                 );
-
-                // Log the action
-                if (operator_id) {
-                    await airtableService.logAction(
-                        operator_id,
-                        task_id,
-                        TaskAction.COMPLETE_PICKING,
-                        TaskStatus.PICKING,
-                        TaskStatus.PICKED,
-                        'Completed picking process'
-                    );
-                }
                 break;
 
             case TaskAction.START_PACKING:
@@ -111,7 +92,7 @@ router.post('/action', async (req, res) => {
                     // No operator_id - clears the current_operator field
                 );
 
-                // Log the action
+                // Log the action manually since we need to clear the operator
                 if (operator_id) {
                     await airtableService.logAction(
                         operator_id,
@@ -130,17 +111,6 @@ router.post('/action', async (req, res) => {
                     TaskStatus.INSPECTING,
                     operator_id
                 );
-
-                if (operator_id) {
-                    await airtableService.logAction(
-                        operator_id,
-                        task_id,
-                        TaskAction.START_INSPECTION,
-                        TaskStatus.PACKED,
-                        TaskStatus.INSPECTING,
-                        'Started quality inspection'
-                    );
-                }
                 break;
 
             case TaskAction.COMPLETE_INSPECTION_CRITERIA:
@@ -150,17 +120,6 @@ router.post('/action', async (req, res) => {
                     TaskStatus.INSPECTED,
                     operator_id
                 );
-
-                if (operator_id) {
-                    await airtableService.logAction(
-                        operator_id,
-                        task_id,
-                        TaskAction.COMPLETE_INSPECTION_CRITERIA,
-                        TaskStatus.INSPECTING,
-                        TaskStatus.INSPECTED,
-                        'Completed all required inspection criteria'
-                    );
-                }
                 break;
 
             case TaskAction.COMPLETE_INSPECTION:
@@ -169,17 +128,6 @@ router.post('/action', async (req, res) => {
                     TaskStatus.COMPLETED,
                     operator_id
                 );
-
-                if (operator_id) {
-                    await airtableService.logAction(
-                        operator_id,
-                        task_id,
-                        TaskAction.COMPLETE_INSPECTION,
-                        TaskStatus.INSPECTED,
-                        TaskStatus.COMPLETED,
-                        'Passed quality inspection'
-                    );
-                }
                 break;
 
             case TaskAction.ENTER_CORRECTION:
@@ -196,21 +144,6 @@ router.post('/action', async (req, res) => {
                     TaskStatus.CORRECTION_NEEDED,
                     operator_id
                 );
-
-                if (operator_id) {
-                    // Get the current task to determine the previous status
-                    const currentTask = await airtableService.getTaskById(task_id);
-                    const previousStatus = currentTask?.status || TaskStatus.INSPECTING;
-
-                    await airtableService.logAction(
-                        operator_id,
-                        task_id,
-                        TaskAction.ENTER_CORRECTION,
-                        previousStatus,
-                        TaskStatus.CORRECTION_NEEDED,
-                        `Correction needed: ${payload.errorType}${payload.notes ? ' - ' + payload.notes : ''}`
-                    );
-                }
                 break;
 
             case TaskAction.START_CORRECTION:
@@ -219,17 +152,6 @@ router.post('/action', async (req, res) => {
                     TaskStatus.CORRECTING,
                     operator_id
                 );
-
-                if (operator_id) {
-                    await airtableService.logAction(
-                        operator_id,
-                        task_id,
-                        TaskAction.START_CORRECTION,
-                        TaskStatus.CORRECTION_NEEDED,
-                        TaskStatus.CORRECTING,
-                        'Started correction process'
-                    );
-                }
                 break;
 
             case TaskAction.RESOLVE_CORRECTION:
@@ -239,33 +161,11 @@ router.post('/action', async (req, res) => {
                     TaskStatus.COMPLETED,
                     operator_id
                 );
-
-                if (operator_id) {
-                    await airtableService.logAction(
-                        operator_id,
-                        task_id,
-                        TaskAction.RESOLVE_CORRECTION,
-                        TaskStatus.CORRECTING,
-                        TaskStatus.COMPLETED,
-                        `Task completed via correction workflow${payload?.newTrackingNumber ? '. New tracking: ' + payload.newTrackingNumber : ''}`
-                    );
-                }
                 break;
 
             case TaskAction.PAUSE_TASK:
-                // Use new pause method that preserves status but sets is_paused flag
-                updatedTask = await airtableService.pauseTask(task_id);
-
-                if (operator_id && updatedTask) {
-                    await airtableService.logAction(
-                        operator_id,
-                        task_id,
-                        TaskAction.PAUSE_TASK,
-                        updatedTask.status,
-                        updatedTask.status,
-                        'Task paused by operator'
-                    );
-                }
+                // Use atomic pause method that handles audit logging
+                updatedTask = await airtableService.pauseTask(task_id, operator_id);
                 break;
 
             case TaskAction.CANCEL_TASK:
@@ -274,17 +174,6 @@ router.post('/action', async (req, res) => {
                     TaskStatus.CANCELLED,
                     operator_id
                 );
-
-                if (operator_id) {
-                    await airtableService.logAction(
-                        operator_id,
-                        task_id,
-                        TaskAction.CANCEL_TASK,
-                        '',
-                        TaskStatus.CANCELLED,
-                        'Task cancelled by operator'
-                    );
-                }
                 break;
 
             case TaskAction.REPORT_EXCEPTION:
@@ -334,6 +223,12 @@ router.post('/action', async (req, res) => {
                 error: 'Task not found or update failed'
             });
         }
+
+        // Add conflict resolution headers for debugging
+        res.setHeader('X-Last-Modified', updatedTask.lastModifiedAt || 'unknown');
+        res.setHeader('X-Server-Timestamp', currentTime);
+        res.setHeader('X-Action-Performed', action);
+        res.setHeader('X-Operation-Sequence', updatedTask.operationSequence?.toString() || '0');
 
         res.json({
             success: true,

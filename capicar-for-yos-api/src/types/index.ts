@@ -12,6 +12,9 @@ export interface FulfillmentTask {
     inExceptionPool?: boolean;
     exceptionReason?: string;
     exceptionLoggedAt?: string;
+    // Conflict resolution fields
+    lastModifiedAt?: string; // ISO8601 timestamp for conflict resolution
+    operationSequence?: number; // Operation sequence number from audit log
 }
 
 export interface StaffMember {

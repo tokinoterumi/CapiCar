@@ -16,7 +16,6 @@ struct ReportIssueView: View {
                 VStack(spacing: 24) {
                     headerSection
 
-                    // 📝 詳細記録 / Detailed Logging
                     loggingInfoSection
 
                     issueTypeSection
@@ -83,21 +82,13 @@ struct ReportIssueView: View {
     // 📝 詳細記録 / Detailed Logging Section
     private var loggingInfoSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "doc.text.fill")
-                    .foregroundColor(.blue)
-                Text("📝 詳細記録 / Detailed Logging")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-            }
 
             VStack(alignment: .leading, spacing: 12) {
                 // 担当者 / Operator
                 HStack {
                     Image(systemName: "person.fill")
-                        .foregroundColor(.green)
                         .frame(width: 20)
-                    Text("担当者 / Operator:")
+                    Text("Operator")
                         .fontWeight(.medium)
                     Spacer()
                     Text(viewModel.currentOperator?.name ?? "Unknown")
@@ -109,9 +100,8 @@ struct ReportIssueView: View {
                 // 時刻 / Timestamp
                 HStack {
                     Image(systemName: "clock.fill")
-                        .foregroundColor(.orange)
                         .frame(width: 20)
-                    Text("時刻 / Timestamp:")
+                    Text("Time")
                         .fontWeight(.medium)
                     Spacer()
                     Text(viewModel.currentTimestamp)
@@ -124,9 +114,8 @@ struct ReportIssueView: View {
                 // Task Status
                 HStack {
                     Image(systemName: "flag.fill")
-                        .foregroundColor(.purple)
                         .frame(width: 20)
-                    Text("Current Status:")
+                    Text("Current Status")
                         .fontWeight(.medium)
                     Spacer()
                     Text(viewModel.task.status.rawValue)
@@ -147,8 +136,7 @@ struct ReportIssueView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Image(systemName: "list.bullet")
-                    .foregroundColor(.red)
-                Text("理由 / Issue Type")
+                Text("Issue Type")
                     .font(.headline)
                     .fontWeight(.semibold)
             }
@@ -158,30 +146,13 @@ struct ReportIssueView: View {
                 GridItem(.flexible())
             ], spacing: 12) {
                 ForEach(IssueType.allCases, id: \.self) { issueType in
-                    Button(action: {
-                        viewModel.selectedIssueType = issueType
-                    }) {
-                        VStack(spacing: 8) {
-                            Image(systemName: issueType.iconName)
-                                .font(.title2)
-                                .foregroundColor(viewModel.selectedIssueType == issueType ? .white : issueType.color)
-
-                            Text(issueType.displayName)
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundColor(viewModel.selectedIssueType == issueType ? .white : .primary)
-                                .multilineTextAlignment(.center)
+                    IssueTypeButton(
+                        issueType: issueType,
+                        isSelected: viewModel.selectedIssueType == issueType,
+                        onTap: {
+                            viewModel.selectedIssueType = issueType
                         }
-                        .frame(height: 80)
-                        .frame(maxWidth: .infinity)
-                        .background(viewModel.selectedIssueType == issueType ? issueType.color : Color(.secondarySystemGroupedBackground))
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(viewModel.selectedIssueType == issueType ? issueType.color : Color.clear, lineWidth: 2)
-                        )
-                    }
-                    .buttonStyle(.plain)
+                    )
                 }
             }
         }
@@ -195,7 +166,7 @@ struct ReportIssueView: View {
             HStack {
                 Image(systemName: "text.bubble")
                     .foregroundColor(.blue)
-                Text("詳細説明 / Description")
+                Text("Description")
                     .font(.headline)
                     .fontWeight(.semibold)
             }
@@ -244,20 +215,16 @@ enum IssueType: String, CaseIterable {
     case wrongItem = "wrong_item"
     case qualityIssue = "quality_issue"
     case packagingIssue = "packaging_issue"
-    case systemError = "system_error"
-    case equipmentFailure = "equipment_failure"
     case other = "other"
 
     var displayName: String {
         switch self {
-        case .damagedItem: return "Damaged Item\n商品破損"
-        case .missingItem: return "Missing Item\n商品不足"
-        case .wrongItem: return "Wrong Item\n商品違い"
-        case .qualityIssue: return "Quality Issue\n品質問題"
-        case .packagingIssue: return "Packaging Issue\n梱包問題"
-        case .systemError: return "System Error\nシステムエラー"
-        case .equipmentFailure: return "Equipment Failure\n機器故障"
-        case .other: return "Other\nその他"
+        case .damagedItem: return "Damaged Item"
+        case .missingItem: return "Missing Item"
+        case .wrongItem: return "Wrong Item"
+        case .qualityIssue: return "Quality Issue"
+        case .packagingIssue: return "Packaging Issue"
+        case .other: return "Other"
         }
     }
 
@@ -268,23 +235,41 @@ enum IssueType: String, CaseIterable {
         case .wrongItem: return "xmark.circle.fill"
         case .qualityIssue: return "star.slash.fill"
         case .packagingIssue: return "shippingbox.fill"
-        case .systemError: return "laptopcomputer.trianglebadge.exclamationmark"
-        case .equipmentFailure: return "wrench.and.screwdriver.fill"
         case .other: return "ellipsis.circle.fill"
         }
     }
+}
 
-    var color: Color {
-        switch self {
-        case .damagedItem: return .red
-        case .missingItem: return .orange
-        case .wrongItem: return .red
-        case .qualityIssue: return .yellow
-        case .packagingIssue: return .blue
-        case .systemError: return .purple
-        case .equipmentFailure: return .brown
-        case .other: return .gray
+// MARK: - Issue Type Button Component
+
+struct IssueTypeButton: View {
+    let issueType: IssueType
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                Image(systemName: issueType.iconName)
+                    .font(.title2)
+                    .foregroundColor(isSelected ? .white : .primary)
+
+                Text(issueType.displayName)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(isSelected ? .white : .primary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(height: 80)
+            .frame(maxWidth: .infinity)
+            .background(isSelected ? Color.blue : Color(.secondarySystemGroupedBackground))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+            )
         }
+        .buttonStyle(.plain)
     }
 }
 

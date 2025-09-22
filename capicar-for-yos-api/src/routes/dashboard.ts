@@ -47,6 +47,10 @@ router.get('/', async (req, res) => {
             lastUpdated: new Date().toISOString()
         };
 
+        // Add conflict resolution headers for debugging
+        res.setHeader('X-Server-Timestamp', new Date().toISOString());
+        res.setHeader('X-Dashboard-Generated', dashboardData.lastUpdated);
+
         // 6. Send the response in the format iOS app expects
         res.json({
             success: true,

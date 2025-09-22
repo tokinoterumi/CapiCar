@@ -183,7 +183,8 @@ class TaskDetailViewModel: ObservableObject {
         case .inspecting, .inspected:
             return canCompleteInspection // Can complete inspection only when criteria are met
         case .correcting:
-            return true
+            // For correction workflow, require weight/dimensions like in picked status
+            return !weightInput.isEmpty && !dimensionsInput.isEmpty
         case .pending, .packed, .correctionNeeded, .completed, .cancelled:
             return false
         }

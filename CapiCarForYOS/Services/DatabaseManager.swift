@@ -248,7 +248,7 @@ class DatabaseManager {
         return try fetchTask(withId: id)
     }
 
-    /// Update a task from API response
+    /// Update a task from API response with conflict resolution
     func updateTask(_ task: FulfillmentTask) throws {
         guard let existingTask = try fetchTask(withId: task.id) else {
             // Task doesn't exist locally, save it if it has an operator
@@ -259,19 +259,102 @@ class DatabaseManager {
             return
         }
 
-        // Update existing task properties
-        existingTask.name = task.orderName
-        existingTask.status = LocalTaskStatus(from: task.status)
-        existingTask.isPaused = task.isPaused ?? false
-        existingTask.lastModifiedLocally = Date()
-        existingTask.syncStatus = .synced // Mark as synced since this came from API
+        // Apply timestamp-based conflict resolution
+        try updateTaskWithConflictResolution(existingTask, from: task)
+    }
 
-        if let currentOperator = task.currentOperator {
-            existingTask.assignedStaffId = currentOperator.id
-            existingTask.assignedStaffName = currentOperator.name
+    /// Enhanced conflict resolution logic
+    private func updateTaskWithConflictResolution(_ localTask: LocalTask, from serverTask: FulfillmentTask) throws {
+        // Parse server timestamp if available
+        let serverLastModified: Date?
+        if let serverTimestamp = serverTask.lastModifiedAt {
+            let formatter = ISO8601DateFormatter()
+            serverLastModified = formatter.date(from: serverTimestamp)
+        } else {
+            serverLastModified = nil
+        }
+
+        let resolution = resolveTaskConflict(
+            localTask: localTask,
+            serverTask: serverTask,
+            serverLastModified: serverLastModified
+        )
+
+        switch resolution.action {
+        case .useServer(let reason):
+            print("🔄 CONFLICT RESOLVED: Using server data for task \(serverTask.id) - \(reason)")
+            try applyServerUpdate(localTask, from: serverTask)
+
+        case .useLocal(let reason):
+            print("🔄 CONFLICT RESOLVED: Using local data for task \(serverTask.id) - \(reason)")
+            // Keep local changes, mark for priority sync
+            localTask.syncStatus = .pendingPrioritySync
+            localTask.lastModifiedLocally = Date()
+
+        case .requiresManualResolution(let localTime, let serverTime):
+            print("🚨 CONFLICT DETECTED: Manual resolution needed for task \(serverTask.id)")
+            print("   Local timestamp: \(localTime)")
+            print("   Server timestamp: \(serverTime)")
+            // For MVP: use local changes but mark for investigation
+            localTask.syncStatus = .conflictPendingResolution
         }
 
         try mainContext.save()
+    }
+
+    /// Apply server updates to local task with enhanced sequence management
+    private func applyServerUpdate(_ localTask: LocalTask, from serverTask: FulfillmentTask) throws {
+        // Standard field updates
+        localTask.name = serverTask.orderName
+        localTask.status = LocalTaskStatus(from: serverTask.status)
+        localTask.isPaused = serverTask.isPaused ?? false
+
+        if let currentOperator = serverTask.currentOperator {
+            localTask.assignedStaffId = currentOperator.id
+            localTask.assignedStaffName = currentOperator.name
+        }
+
+        // Enhanced sequence management updates
+        let serverSequence = serverTask.operationSequence ?? 0
+
+        // Update sequence tracking
+        localTask.operationSequence = serverSequence
+        localTask.lastKnownServerSequence = serverSequence
+
+        // Handle pending operations based on server sequence
+        if !localTask.pendingOperations.isEmpty {
+            print("🔄 SYNC UPDATE: Reconciling \(localTask.pendingOperations.count) pending operations")
+
+            // Find operations that appear to have been processed by server
+            let processedOperations = localTask.pendingOperations.filter { operation in
+                operation.localSequence <= serverSequence
+            }
+
+            if !processedOperations.isEmpty {
+                print("✅ SYNC UPDATE: \(processedOperations.count) operations appear synced")
+                localTask.updateAfterSuccessfulSync(serverSequence: serverSequence, syncedOperations: processedOperations)
+            } else {
+                // Reset local operation count if server sequence advanced beyond expectations
+                localTask.localOperationCount = localTask.pendingOperations.count
+                if localTask.pendingOperations.count > 1 {
+                    localTask.syncStatus = .pendingSyncWithSequenceDrift
+                } else if localTask.pendingOperations.count == 1 {
+                    localTask.syncStatus = .pendingSync
+                } else {
+                    localTask.syncStatus = .synced
+                }
+                print("⚠️ SYNC UPDATE: Sequence mismatch - updated sync status to \(localTask.syncStatus.rawValue)")
+            }
+        } else {
+            // No pending operations - fully synced
+            localTask.localOperationCount = 0
+            localTask.syncStatus = .synced
+        }
+
+        print("🔢 SYNC COMPLETE for task \(serverTask.id):")
+        print("   Server sequence: \(serverSequence)")
+        print("   Sync status: \(localTask.syncStatus.rawValue)")
+        print("   Remaining pending operations: \(localTask.pendingOperations.count)")
     }
 
     /// Save checklist items for a task
@@ -332,6 +415,122 @@ class DatabaseManager {
         // In a full implementation, we would fetch from local storage
         return nil
     }
+
+    // MARK: - Conflict Resolution Logic
+
+    /// Enhanced conflict resolution strategy using operation sequence and timestamp fallback
+    private func resolveTaskConflict(
+        localTask: LocalTask,
+        serverTask: FulfillmentTask,
+        serverLastModified: Date?
+    ) -> ConflictResolution {
+
+        // Case 1: No local changes pending - safe to use server
+        if localTask.syncStatus != .pendingSync &&
+           localTask.syncStatus != .pendingPrioritySync &&
+           localTask.syncStatus != .conflictPendingResolution &&
+           localTask.syncStatus != .pendingSyncWithSequenceDrift {
+            return ConflictResolution(
+                action: .useServer(reason: "No local changes pending"),
+                reason: "Local task syncStatus: \(localTask.syncStatus.rawValue)"
+            )
+        }
+
+        // Case 2: Enhanced sequence-based resolution with drift detection
+        let localSequence = localTask.operationSequence
+        let serverSequence = serverTask.operationSequence ?? 0
+        let lastKnownServerSequence = localTask.lastKnownServerSequence
+        let localOperationCount = localTask.localOperationCount
+
+        print("🔢 ENHANCED SEQUENCE COMPARISON for task \(serverTask.id):")
+        print("   Local sequence:        \(localSequence)")
+        print("   Server sequence:       \(serverSequence)")
+        print("   Last known server seq: \(lastKnownServerSequence)")
+        print("   Local operation count: \(localOperationCount)")
+        print("   Sequence drift risk:   \(localTask.sequenceDriftRisk)")
+        print("   Pending operations:    \(localTask.pendingOperationsSummary)")
+
+        // Case 2a: Handle sequence drift scenarios
+        if localTask.syncStatus == .pendingSyncWithSequenceDrift {
+            print("⚠️ SEQUENCE DRIFT DETECTED - analyzing scenario")
+
+            // If server sequence jumped ahead significantly, other operations happened
+            let serverAdvancement = serverSequence - lastKnownServerSequence
+            let expectedLocalSequence = lastKnownServerSequence + localOperationCount
+
+            if serverAdvancement > localOperationCount {
+                print("🔄 Server has more operations than expected - using server data")
+                return ConflictResolution(
+                    action: .useServer(reason: "Server sequence advanced beyond local operations"),
+                    reason: "Server advancement (\(serverAdvancement)) > Local operations (\(localOperationCount))"
+                )
+            } else if expectedLocalSequence == serverSequence {
+                print("✅ Sequences align perfectly - server caught up with local operations")
+                return ConflictResolution(
+                    action: .useServer(reason: "Server and local sequences are now aligned"),
+                    reason: "Expected local sequence (\(expectedLocalSequence)) matches server (\(serverSequence))"
+                )
+            } else {
+                print("🔀 Complex drift scenario - requires priority sync")
+                return ConflictResolution(
+                    action: .useLocal(reason: "Complex sequence drift - local operations need priority sync"),
+                    reason: "Expected: \(expectedLocalSequence), Server: \(serverSequence), Need manual reconciliation"
+                )
+            }
+        }
+
+        // Case 2b: Standard sequence comparison
+        if localSequence > serverSequence {
+            return ConflictResolution(
+                action: .useLocal(reason: "Local sequence is higher"),
+                reason: "Local sequence (\(localSequence)) > Server sequence (\(serverSequence))"
+            )
+        } else if serverSequence > localSequence {
+            return ConflictResolution(
+                action: .useServer(reason: "Server sequence is higher"),
+                reason: "Server sequence (\(serverSequence)) > Local sequence (\(localSequence))"
+            )
+        }
+
+        // Case 3: Same sequence - fallback to timestamp comparison
+        print("⚠️ Same sequence numbers (\(localSequence)) - falling back to timestamp comparison")
+
+        guard let serverTime = serverLastModified else {
+            return ConflictResolution(
+                action: .useLocal(reason: "Same sequence, server timestamp missing"),
+                reason: "Cannot determine server modification time, preserving local changes"
+            )
+        }
+
+        let localTime = localTask.lastModifiedLocally
+        let timeDiff = abs(localTime.timeIntervalSince(serverTime))
+
+        print("🕐 TIMESTAMP FALLBACK for task \(serverTask.id):")
+        print("   Local:  \(localTime)")
+        print("   Server: \(serverTime)")
+        print("   Diff:   \(timeDiff) seconds")
+
+        // Case 4: Timestamps very close (< 60 seconds) - potential race condition
+        if timeDiff < 60 {
+            return ConflictResolution(
+                action: .requiresManualResolution(localTime: localTime, serverTime: serverTime),
+                reason: "Same sequence (\(localSequence)) and timestamps too close (\(timeDiff)s)"
+            )
+        }
+
+        // Case 5: Use most recent timestamp as final tiebreaker
+        if localTime > serverTime {
+            return ConflictResolution(
+                action: .useLocal(reason: "Same sequence, local timestamp newer"),
+                reason: "Local (\(localTime)) > Server (\(serverTime))"
+            )
+        } else {
+            return ConflictResolution(
+                action: .useServer(reason: "Same sequence, server timestamp newer"),
+                reason: "Server (\(serverTime)) > Local (\(localTime))"
+            )
+        }
+    }
 }
 
 // MARK: - Helper Extensions
@@ -373,6 +572,20 @@ struct LocalStaff {
 
     var asStaffMember: StaffMember {
         StaffMember(id: id, name: name)
+    }
+}
+
+// MARK: - Conflict Resolution Support Types
+
+/// Result of conflict resolution analysis
+struct ConflictResolution {
+    let action: Action
+    let reason: String
+
+    enum Action {
+        case useLocal(reason: String)
+        case useServer(reason: String)
+        case requiresManualResolution(localTime: Date, serverTime: Date)
     }
 }
 

@@ -73,7 +73,11 @@ class CorrectionFlowViewModel: ObservableObject {
     }
     
     // MARK: - Computed Properties
-    
+
+    var getCurrentOperator: StaffMember? {
+        return currentOperator
+    }
+
     var canStartCorrection: Bool {
         guard workflowState == .initial else { return false }
         guard let errorType = selectedErrorType else { return false }
@@ -158,10 +162,10 @@ class CorrectionFlowViewModel: ObservableObject {
                 payload["costImpact"] = impact.rawValue
             }
 
-            // Enter correction mode
+            // Start correction work
             let updatedTask = try await offlineAPIService.performTaskAction(
                 taskId: task.id,
-                action: .enterCorrection,
+                action: .startCorrection,
                 operatorId: operatorId,
                 payload: payload
             )

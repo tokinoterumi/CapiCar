@@ -17,6 +17,10 @@ struct FulfillmentTask: Identifiable, Codable, Equatable, Hashable {
     var inExceptionPool: Bool?
     var exceptionReason: String?
     var exceptionLoggedAt: String?
+
+    // Conflict resolution fields
+    var lastModifiedAt: String? // Server-side last modification timestamp
+    var operationSequence: Int? // Operation sequence number from audit log
     
     // Equatable conformance for easy comparison
     static func == (lhs: FulfillmentTask, rhs: FulfillmentTask) -> Bool {

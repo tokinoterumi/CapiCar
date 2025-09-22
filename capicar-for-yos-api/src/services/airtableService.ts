@@ -25,7 +25,7 @@ export class AirtableService {
                 })
                 .all();
 
-            return Promise.all(records.map(record => this.mapTaskRecord(record)));
+            return await this.mapTaskRecords(records); // Use batch mapping
         } catch (error) {
             console.error('Error fetching tasks:', error);
             throw new Error('Failed to fetch tasks from Airtable');
@@ -70,8 +70,7 @@ export class AirtableService {
                 // Get the staff record to extract the staff_id field value
                 try {
                     const staffRecord = await base(STAFF_TABLE).find(operatorId);
-                    const staffId = staffRecord.get('staff_id') as string;
-                    updateFields.current_operator = staffId; // Use staff_id field value
+                    updateFields.current_operator = staffRecord.get('staff_id') as string; // Use staff_id field value
                 } catch (error) {
                     console.error('Error fetching staff record:', error);
                     // Don't fail the entire operation if staff lookup fails
@@ -81,15 +80,31 @@ export class AirtableService {
                 updateFields.current_operator = '';
             }
 
-            const record = await base(TASKS_TABLE).update(taskId, updateFields);
-            return await this.mapTaskRecord(record);
+            // Use atomic operation if operatorId is provided (for audit logging)
+            if (operatorId) {
+                const actionType = this.getActionTypeForStatus(status);
+                const result = await this.atomicTaskOperation(
+                    taskId,
+                    operatorId,
+                    actionType,
+                    updateFields,
+                    undefined, // oldValue will be determined by the action context
+                    status,
+                    `Status updated to ${status}`
+                );
+                return result.task;
+            } else {
+                // Direct update for system operations (no audit needed)
+                const record = await base(TASKS_TABLE).update(taskId, updateFields);
+                return await this.mapTaskRecord(record);
+            }
         } catch (error) {
             console.error('Error updating task status:', error);
             throw new Error('Failed to update task status');
         }
     }
 
-    async pauseTask(taskId: string): Promise<FulfillmentTask | null> {
+    async pauseTask(taskId: string, operatorId?: string): Promise<FulfillmentTask | null> {
         try {
             const updateFields: any = {
                 is_paused: true,
@@ -97,8 +112,24 @@ export class AirtableService {
                 updated_at: new Date().toISOString()
             };
 
-            const record = await base(TASKS_TABLE).update(taskId, updateFields);
-            return await this.mapTaskRecord(record);
+            // Use atomic operation if operatorId is provided
+            if (operatorId) {
+                const currentTask = await this.getTaskById(taskId);
+                const result = await this.atomicTaskOperation(
+                    taskId,
+                    operatorId,
+                    'PAUSE_TASK',
+                    updateFields,
+                    currentTask?.status,
+                    currentTask?.status,
+                    'Task paused by operator'
+                );
+                return result.task;
+            } else {
+                // Direct update for system operations
+                const record = await base(TASKS_TABLE).update(taskId, updateFields);
+                return await this.mapTaskRecord(record);
+            }
         } catch (error) {
             console.error('Error pausing task:', error);
             throw new Error('Failed to pause task');
@@ -110,7 +141,7 @@ export class AirtableService {
             // Get current task status for audit logging
             const currentTask = await this.getTaskById(taskId);
             if (!currentTask) {
-                throw new Error('Task not found');
+                return null;
             }
 
             const updateFields: any = {
@@ -122,30 +153,25 @@ export class AirtableService {
             if (operatorId) {
                 try {
                     const staffRecord = await base(STAFF_TABLE).find(operatorId);
-                    const staffId = staffRecord.get('staff_id') as string;
-                    updateFields.current_operator = staffId;
+                    updateFields.current_operator = staffRecord.get('staff_id') as string;
                 } catch (error) {
                     console.error('Error fetching staff record:', error);
                     // Don't fail the entire operation if staff lookup fails
                 }
             }
 
-            const record = await base(TASKS_TABLE).update(taskId, updateFields);
-            const updatedTask = await this.mapTaskRecord(record);
+            // Use atomic operation for resume
+            const result = await this.atomicTaskOperation(
+                taskId,
+                operatorId,
+                'RESUME_TASK',
+                updateFields,
+                'Paused',
+                currentTask.status,
+                `Task resumed from ${currentTask.status} status`
+            );
 
-            // Log the resume action
-            if (operatorId && updatedTask) {
-                await this.logAction(
-                    operatorId,
-                    taskId,
-                    'RESUME_TASK',
-                    'Paused',
-                    updatedTask.status,
-                    `Task resumed from ${updatedTask.status} status`
-                );
-            }
-
-            return updatedTask;
+            return result.task;
         } catch (error) {
             console.error('Error resuming task:', error);
             throw new Error('Failed to resume task');
@@ -246,8 +272,8 @@ export class AirtableService {
     async moveTaskToExceptionPool(
         taskId: string,
         exceptionReason: string,
-        description: string,
-        reportingOperatorId: string
+        _description: string,
+        _reportingOperatorId: string
     ): Promise<void> {
         try {
             const now = new Date().toISOString();
@@ -316,14 +342,17 @@ export class AirtableService {
         oldValue?: string,
         newValue?: string,
         details?: string
-    ): Promise<void> {
+    ): Promise<number> {
         try {
             // First validate that the staff member exists
             const staffMember = await this.getStaffById(operatorId);
             if (!staffMember) {
                 console.warn(`⚠️  Skipping audit log - Staff member ${operatorId} not found`);
-                return;
+                return 0;
             }
+
+            // Get the next operation sequence for this task
+            const nextSequence = await this.getNextOperationSequence(taskId);
 
             // Map complex action types to simpler ones that exist in Airtable
             const mappedActionType = this.mapActionType(actionType);
@@ -335,13 +364,40 @@ export class AirtableService {
                 action_type: mappedActionType,
                 old_value: oldValue || '',
                 new_value: newValue || '',
-                details: `${actionType}: ${details || ''}`.trim() // Include original action in details
+                details: `${actionType}: ${details || ''}`.trim(), // Include original action in details
+                operation_sequence: nextSequence // Add sequence number
             });
 
-            console.log(`✅ Audit log created: ${actionType} by ${staffMember.name} on task ${taskId}`);
+            console.log(`✅ Audit log created: ${actionType} by ${staffMember.name} on task ${taskId} (seq: ${nextSequence})`);
+            return nextSequence;
         } catch (error) {
             console.error('❌ Error logging action:', error);
             // Don't throw error for audit logging - it shouldn't break the main operation
+            return 0;
+        }
+    }
+
+    // Helper method to determine action type from status change
+    private getActionTypeForStatus(status: TaskStatus): string {
+        switch (status) {
+            case TaskStatus.PICKING:
+                return 'START_PICKING';
+            case TaskStatus.PICKED:
+                return 'COMPLETE_PICKING';
+            case TaskStatus.PACKED:
+                return 'START_PACKING';
+            case TaskStatus.INSPECTING:
+                return 'START_INSPECTION';
+            case TaskStatus.COMPLETED:
+                return 'COMPLETE_INSPECTION';
+            case TaskStatus.CANCELLED:
+                return 'CANCEL_TASK';
+            case TaskStatus.CORRECTION_NEEDED:
+                return 'ENTER_CORRECTION';
+            case TaskStatus.CORRECTING:
+                return 'START_CORRECTION';
+            default:
+                return 'FIELD_UPDATED';
         }
     }
 
@@ -422,6 +478,82 @@ export class AirtableService {
 
     // MARK: - Helper Methods
 
+    /**
+     * Batch version of mapTaskRecord for performance optimization
+     * Maps multiple task records using a single sequence query
+     */
+    private async mapTaskRecords(records: any[]): Promise<FulfillmentTask[]> {
+        if (records.length === 0) {
+            return [];
+        }
+
+        console.log(`📊 BATCH MAPPING: Processing ${records.length} task records`);
+
+        // Extract task IDs and get sequences in batch
+        const taskIds = records.map(record => record.id);
+        const sequenceMap = await this.getMultipleTaskSequences(taskIds);
+
+        // Map all records using the cached sequences
+        const tasks = await Promise.all(
+            records.map(record => this.mapTaskRecordWithSequence(record, sequenceMap.get(record.id) || 0))
+        );
+
+        console.log(`✅ BATCH MAPPING: Completed mapping ${records.length} tasks`);
+        return tasks;
+    }
+
+    /**
+     * Map a single task record with pre-fetched sequence number
+     */
+    private async mapTaskRecordWithSequence(record: any, operationSequence: number): Promise<FulfillmentTask> {
+        const currentOperatorRaw = record.get('current_operator');
+
+        // Ensure date is properly formatted as ISO8601
+        const createdAtRaw = record.get('created_at');
+        let createdAtISO: string;
+        if (createdAtRaw) {
+            // If it's already a Date object, convert to ISO string
+            // If it's a string, try to parse and reformat to ensure ISO8601 compatibility
+            try {
+                createdAtISO = new Date(createdAtRaw).toISOString();
+            } catch (error) {
+                console.warn('Date parsing failed for:', createdAtRaw, 'using current date');
+                createdAtISO = new Date().toISOString();
+            }
+        } else {
+            // Fallback to current date if no created_at
+            createdAtISO = new Date().toISOString();
+        }
+
+        // Get current operator if exists
+        let currentOperator: StaffMember | undefined;
+        if (currentOperatorRaw) {
+            currentOperator = await this.getOperatorFromStaffId(currentOperatorRaw as string);
+        }
+
+        // Extract last modified timestamp for conflict resolution
+        const lastModifiedAt = record.get('updated_at') as string;
+
+        return {
+            id: record.id,
+            orderName: record.get('order_name') as string || '',
+            status: record.get('status') as TaskStatus || TaskStatus.PENDING,
+            shippingName: record.get('shipping_name') as string || '',
+            createdAt: createdAtISO,
+            checklistJson: record.get('checklist_json') as string || '[]',
+            currentOperator: currentOperator,
+            // Pause state
+            isPaused: record.get('is_paused') as boolean || false,
+            // Exception handling fields
+            inExceptionPool: record.get('in_exception_pool') as boolean || false,
+            exceptionReason: record.get('exception_reason') as string || undefined,
+            exceptionLoggedAt: record.get('exception_logged_at') as string || undefined,
+            // Conflict resolution fields
+            lastModifiedAt: lastModifiedAt,
+            operationSequence: operationSequence // Use pre-fetched sequence
+        };
+    }
+
     private async mapTaskRecord(record: any): Promise<FulfillmentTask> {
         const currentOperatorRaw = record.get('current_operator');
 
@@ -456,6 +588,21 @@ export class AirtableService {
         }
 
 
+        // Handle lastModifiedAt timestamp for conflict resolution
+        const updatedAtRaw = record.get('updated_at');
+        let lastModifiedAtISO: string | undefined;
+        if (updatedAtRaw) {
+            try {
+                lastModifiedAtISO = new Date(updatedAtRaw).toISOString();
+            } catch (error) {
+                console.warn('Invalid lastModifiedAt date format for task', record.id, ':', updatedAtRaw);
+                lastModifiedAtISO = new Date().toISOString(); // Fallback to current date
+            }
+        }
+
+        // Get current operation sequence from audit log
+        const operationSequence = await this.getCurrentOperationSequence(record.id);
+
         return {
             id: record.id,
             orderName: record.get('order_name') as string || '',
@@ -469,8 +616,164 @@ export class AirtableService {
             // Exception handling fields
             inExceptionPool: record.get('in_exception_pool') as boolean || false,
             exceptionReason: record.get('exception_reason') as string || undefined,
-            exceptionLoggedAt: record.get('exception_logged_at') as string || undefined
+            exceptionLoggedAt: record.get('exception_logged_at') as string || undefined,
+            // Conflict resolution fields
+            lastModifiedAt: lastModifiedAtISO,
+            operationSequence: operationSequence
         };
+    }
+
+    // MARK: - Atomic Operations
+
+    /**
+     * Performs an atomic task operation: Audit-first, then task update
+     * This ensures sequence is always recorded even if task update fails
+     */
+    private async atomicTaskOperation(
+        taskId: string,
+        operatorId: string,
+        actionType: string,
+        taskUpdate: any,
+        oldValue?: string,
+        newValue?: string,
+        details?: string
+    ): Promise<{ task: FulfillmentTask; sequence: number }> {
+        // Step 1: Create audit log first (reserves sequence number)
+        const sequence = await this.logAction(
+            operatorId,
+            taskId,
+            actionType,
+            oldValue,
+            newValue,
+            details
+        );
+
+        // Step 2: Apply task update
+        try {
+            const record = await base(TASKS_TABLE).update(taskId, taskUpdate);
+            const updatedTask = await this.mapTaskRecord(record);
+
+            console.log(`✅ Atomic operation completed: ${actionType} on task ${taskId} (seq: ${sequence})`);
+            return { task: updatedTask, sequence };
+
+        } catch (error) {
+            // Task update failed - audit log exists but that's OK for data integrity
+            console.warn(`⚠️ Task update failed but audit sequence ${sequence} is recorded for ${actionType} on task ${taskId}`);
+            console.error('Task update error:', error);
+            throw new Error(`Failed to update task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    // MARK: - Operation Sequence Management
+
+    private async getNextOperationSequence(taskId: string): Promise<number> {
+        try {
+            // Get the highest operation_sequence for this task
+            const records = await base(AUDIT_LOG_TABLE)
+                .select({
+                    filterByFormula: `{task_id} = '${taskId}'`,
+                    sort: [{ field: 'operation_sequence', direction: 'desc' }],
+                    maxRecords: 1
+                })
+                .all();
+
+            if (records.length > 0) {
+                const latestSequence = records[0].get('operation_sequence') as number;
+                return (latestSequence || 0) + 1;
+            } else {
+                // First operation for this task
+                return 1;
+            }
+        } catch (error) {
+            console.error('Error getting next operation sequence:', error);
+            // Fallback to timestamp-based sequence
+            return Date.now() % 1000000; // Use timestamp as fallback
+        }
+    }
+
+    async getCurrentOperationSequence(taskId: string): Promise<number> {
+        try {
+            const records = await base(AUDIT_LOG_TABLE)
+                .select({
+                    filterByFormula: `{task_id} = '${taskId}'`,
+                    sort: [{ field: 'operation_sequence', direction: 'desc' }],
+                    maxRecords: 1
+                })
+                .all();
+
+            if (records.length > 0) {
+                return records[0].get('operation_sequence') as number || 0;
+            } else {
+                return 0; // No operations yet
+            }
+        } catch (error) {
+            console.error('Error getting current operation sequence:', error);
+            return 0;
+        }
+    }
+
+    /**
+     * Batch query to get operation sequences for multiple tasks
+     * This replaces O(n) individual queries with O(1) batch query
+     */
+    async getMultipleTaskSequences(taskIds: string[]): Promise<Map<string, number>> {
+        const sequenceMap = new Map<string, number>();
+
+        if (taskIds.length === 0) {
+            return sequenceMap;
+        }
+
+        try {
+            // Initialize all tasks with sequence 0
+            taskIds.forEach(taskId => sequenceMap.set(taskId, 0));
+
+            // Build OR formula for batch query: OR({task_id} = 'id1', {task_id} = 'id2', ...)
+            const taskIdConditions = taskIds.map(taskId => `{task_id} = '${taskId}'`);
+            const filterFormula = taskIdConditions.length === 1
+                ? taskIdConditions[0]
+                : `OR(${taskIdConditions.join(', ')})`;
+
+            console.log(`🔢 BATCH SEQUENCE QUERY: Fetching sequences for ${taskIds.length} tasks`);
+
+            // Fetch all audit log records for these tasks
+            const records = await base(AUDIT_LOG_TABLE)
+                .select({
+                    filterByFormula: filterFormula,
+                    sort: [
+                        { field: 'task_id', direction: 'asc' },
+                        { field: 'operation_sequence', direction: 'desc' }
+                    ]
+                })
+                .all();
+
+            console.log(`🔢 BATCH SEQUENCE QUERY: Retrieved ${records.length} audit records`);
+
+            // Group records by task_id and find the highest sequence for each task
+            const taskSequences: { [taskId: string]: number } = {};
+
+            for (const record of records) {
+                const taskId = record.get('task_id') as string;
+                const sequence = record.get('operation_sequence') as number || 0;
+
+                // Keep only the highest sequence for each task
+                if (!taskSequences[taskId] || sequence > taskSequences[taskId]) {
+                    taskSequences[taskId] = sequence;
+                }
+            }
+
+            // Update the map with the found sequences
+            Object.entries(taskSequences).forEach(([taskId, sequence]) => {
+                sequenceMap.set(taskId, sequence);
+            });
+
+            console.log(`✅ BATCH SEQUENCE QUERY: Processed sequences for ${taskIds.length} tasks`);
+            return sequenceMap;
+
+        } catch (error) {
+            console.error('Error in batch sequence query:', error);
+            // Return map with all zeros on error
+            return sequenceMap;
+        }
     }
 
     // MARK: - Helper Methods
