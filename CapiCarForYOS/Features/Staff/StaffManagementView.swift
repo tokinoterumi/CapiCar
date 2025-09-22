@@ -51,17 +51,32 @@ struct StaffManagementView: View {
                                 staff: staff,
                                 isEditing: editingStaff?.id == staff.id,
                                 onEdit: {
-                                    print("🔍 EDIT ACTION TRIGGERED for staff: \(staff.name) (ID: \(staff.id))")
                                     editingStaff = staff
                                     editingName = staff.name
                                 },
                                 onDelete: {
-                                    print("🗑️ DELETE ACTION TRIGGERED for staff: \(staff.name) (ID: \(staff.id))")
                                     staffToDelete = staff
                                     showingDeleteConfirmation = true
                                 }
                             )
                         }
+
+                        // Add Staff Button as last list item
+                        Button(action: { showingAddStaff = true }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.blue)
+
+                                Text("Add Staff Member")
+                                    .font(.headline)
+                                    .foregroundColor(.blue)
+
+                                Spacer()
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        .listRowBackground(Color(.secondarySystemGroupedBackground))
                     }
                 }
 
@@ -99,14 +114,7 @@ struct StaffManagementView: View {
 
             }
             .navigationTitle("Staff Management")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingAddStaff = true }) {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
+            .navigationBarTitleDisplayMode(.automatic)
             .onAppear {
                 loadAllStaff()
             }
@@ -398,7 +406,7 @@ struct AddStaffSheet: View {
                         Button(action: addField) {
                             HStack {
                                 Image(systemName: "plus.circle.fill")
-                                Text("Add Another Field")
+                                Text("Add More")
                             }
                             .foregroundColor(.blue)
                         }
@@ -416,7 +424,7 @@ struct AddStaffSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add All") {
+                    Button("Add") {
                         addAllStaff()
                     }
                     .disabled(allFieldsEmpty || isAdding)
@@ -460,6 +468,7 @@ struct AddStaffSheet: View {
 struct StaffManagementView_Previews: PreviewProvider {
     static var previews: some View {
         StaffManagementView()
+            .environmentObject(StaffManager())
     }
 }
 #endif

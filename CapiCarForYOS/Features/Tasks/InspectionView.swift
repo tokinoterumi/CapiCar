@@ -41,7 +41,7 @@ struct InspectionView: View {
                             Text("Pause")
                         }
                     }
-                    .foregroundColor(.orange)
+                    .disabled(viewModel.isLoading)
                 }
             }
             .background(Color(.systemGroupedBackground))

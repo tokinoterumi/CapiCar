@@ -502,16 +502,6 @@ struct TaskPreviewSheet: View {
     }
     
     private var actionUnavailableReason: String {
-        // For completed/cancelled tasks, show completion summary instead of action unavailable message
-        switch task.status {
-        case .completed:
-            return "Task completed successfully. See work history below for details."
-        case .cancelled:
-            return "Task was cancelled. See work history below for details."
-        default:
-            break
-        }
-
         if !staffManager.isOperatorCheckedIn {
             return "Please check in as an operator to start working on tasks"
         }

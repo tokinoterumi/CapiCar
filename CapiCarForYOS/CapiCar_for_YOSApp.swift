@@ -32,18 +32,17 @@ struct CapiCar_for_YOSApp: App {
     }()
     
 
+    init() {
+        // Initialize DatabaseManager immediately when app starts
+        DatabaseManager.shared.initialize(with: sharedModelContainer)
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(authManager)
                 .environmentObject(staffManager)
                 .environmentObject(SyncManager.shared)
-                .onAppear {
-                    // Initialize DatabaseManager with the shared container
-                    Task { @MainActor in
-                        DatabaseManager.shared.initialize(with: sharedModelContainer)
-                    }
-                }
         }
         .modelContainer(sharedModelContainer)
     }

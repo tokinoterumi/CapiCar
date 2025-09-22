@@ -3,11 +3,19 @@ import SwiftUI
 // MARK: - Correction Flow View
 
 struct CorrectionFlowView: View {
-    @StateObject private var viewModel: CorrectionFlowViewModel
+    @ObservedObject private var viewModel: CorrectionFlowViewModel
     @Environment(\.dismiss) private var dismiss
-    
+
+    // State for showing TaskDetailView when picking error correction is started
+    @State private var showingTaskDetailView = false
+
     init(task: FulfillmentTask, currentOperator: StaffMember?) {
-        _viewModel = StateObject(wrappedValue: CorrectionFlowViewModel(task: task, currentOperator: currentOperator))
+        // Use @ObservedObject instead of @StateObject to avoid initialization crashes
+        self.viewModel = CorrectionFlowViewModel(
+            task: task,
+            currentOperator: currentOperator,
+            offlineAPIService: OfflineAPIService.shared
+        )
     }
     
     var body: some View {
@@ -36,6 +44,17 @@ struct CorrectionFlowView: View {
             Button("OK") { viewModel.errorMessage = nil }
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+        .fullScreenCover(isPresented: $showingTaskDetailView, onDismiss: {
+            // When TaskDetailView is dismissed, also dismiss CorrectionFlowView
+            dismiss()
+        }) {
+            NavigationStack {
+                TaskDetailView(
+                    task: viewModel.task,
+                    currentOperator: viewModel.getCurrentOperator
+                )
+            }
         }
     }
     
@@ -149,6 +168,19 @@ struct CorrectionFlowView: View {
                                 // Happy path: Complete entire workflow in one action
                                 await viewModel.completeHappyPathWorkflow()
                                 dismiss()
+                            } else if viewModel.selectedErrorType == .pickingError {
+                                // Picking Error: Start correction and open TaskDetailView
+                                print("🔧 Starting correction for picking error...")
+                                print("🔧 Task status before startCorrection: \(viewModel.task.status.rawValue)")
+                                await viewModel.startCorrection()
+                                print("🔧 Task status after startCorrection: \(viewModel.task.status.rawValue)")
+                                if viewModel.errorMessage == nil {
+                                    // Add small delay to ensure task state is updated
+                                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                                    print("🔧 Opening TaskDetailView with status: \(viewModel.task.status.rawValue)")
+                                    // Only show TaskDetailView if correction started successfully
+                                    showingTaskDetailView = true
+                                }
                             } else {
                                 // Regular path: Just start correction
                                 await viewModel.startCorrection()

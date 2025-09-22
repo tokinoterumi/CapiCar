@@ -149,12 +149,10 @@ struct ContentView: View {
             selectedTask = nil
         }) {
             if let task = selectedTask {
-                NavigationStack {
-                    CorrectionFlowView(
-                        task: task,
-                        currentOperator: staffManager.currentOperator
-                    )
-                }
+                CorrectionFlowView(
+                    task: task,
+                    currentOperator: staffManager.currentOperator
+                )
                 .onDisappear {
                     // Refresh dashboard data when CorrectionFlowView is dismissed
                     Task {
@@ -186,8 +184,6 @@ struct ContentView: View {
         }
     }
 }
-
-// NOTE: StaffManagementView is now in Features/Staff/StaffManagementView.swift
 
 // MARK: - Preview
 #Preview {

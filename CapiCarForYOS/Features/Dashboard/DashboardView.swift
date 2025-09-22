@@ -39,20 +39,6 @@ struct DashboardView: View {
                     mainContentView
                 }
             }
-            .toolbar(content: {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    // App icon in dashboard
-                    Image("AppIcon")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 32, height: 32)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    refreshButton
-                }
-            })
             // Navigation is now handled by TaskGroupView sheets
             // Fetch initial data when the view first appears.
             .onAppear {
@@ -64,19 +50,13 @@ struct DashboardView: View {
             }
         }
     }
-    
+
     // MARK: - Private Subviews
+
     
     private var mainContentView: some View {
         // A List is the most appropriate container for our grouped tasks.
         List {
-            // Current Operator Widget at the top
-            Section {
-                CurrentOperatorWidget()
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-            }
-            
             // Sync Status Widget
             Section {
                 SyncStatusWidget()
@@ -104,23 +84,6 @@ struct DashboardView: View {
         }
     }
     
-    private var refreshButton: some View {
-        Button(action: {
-            // To call an async function from a button action, wrap it in a Task.
-            Task {
-                await viewModel.fetchDashboardData()
-            }
-        }) {
-            if viewModel.isLoading {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .scaleEffect(0.8)
-            } else {
-                Image(systemName: "arrow.clockwise")
-            }
-        }
-        .disabled(viewModel.isLoading)
-    }
     
     private var loadingView: some View {
         ProgressView("Loading Dashboard...")
@@ -155,13 +118,9 @@ struct DashboardView: View {
 #if DEBUG
 struct DashboardView_Previews: PreviewProvider {
     static var previews: some View {
-        let mockStaffManager = StaffManager()
-        mockStaffManager.currentOperator = StaffMember(id: "staff1", name: "Test User")
-        
         let mockSyncManager = SyncManager.shared
-        
+
         return DashboardView(onTaskSelected: { _ in })
-            .environmentObject(mockStaffManager)
             .environmentObject(mockSyncManager)
             .environmentObject(DashboardViewModel())
     }

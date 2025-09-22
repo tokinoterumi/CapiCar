@@ -3,16 +3,20 @@ import Combine
 
 @MainActor
 class DashboardViewModel: ObservableObject {
-    
+
     // MARK: - Published Properties
-    
+
     @Published var groupedTasks: GroupedTasks?
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
-    
+
     // MARK: - Dependencies
 
     private let offlineAPIService = OfflineAPIService.shared
+
+    // MARK: - Request Deduplication
+
+    private var currentFetchTask: Task<Void, Never>?
 
     // MARK: - Initialization
 
@@ -24,36 +28,48 @@ class DashboardViewModel: ObservableObject {
     
     /// Fetches all the necessary data for the dashboard from the backend API.
     func fetchDashboardData() async {
+        // Cancel any existing fetch task to prevent multiple simultaneous requests
+        currentFetchTask?.cancel()
 
+        currentFetchTask = Task {
+            // 1. Set initial state.
+            self.isLoading = true
+            self.errorMessage = nil
 
-        // 1. Set initial state.
-        self.isLoading = true
-        self.errorMessage = nil
-        
-        do {
-            // 2. Await the result from OfflineAPIService
-            let fetchedGroupedTasks = try await offlineAPIService.fetchDashboardTasks()
-            print("🔥 VIEWMODEL: Successfully received grouped tasks from OfflineAPIService")
-            print("🔥 VIEWMODEL: - Pending: \(fetchedGroupedTasks.pending.count)")
-            print("🔥 VIEWMODEL: - Picking: \(fetchedGroupedTasks.picking.count)")
-            print("🔥 VIEWMODEL: - Packed: \(fetchedGroupedTasks.packed.count)")
-            print("🔥 VIEWMODEL: - Inspecting: \(fetchedGroupedTasks.inspecting.count)")
-            print("🔥 VIEWMODEL: - Completed: \(fetchedGroupedTasks.completed.count)")
-            print("🔥 VIEWMODEL: - Paused: \(fetchedGroupedTasks.paused.count)")
-            print("🔥 VIEWMODEL: - Cancelled: \(fetchedGroupedTasks.cancelled.count)")
+            do {
+                // 2. Await the result from OfflineAPIService
+                let fetchedGroupedTasks = try await offlineAPIService.fetchDashboardTasks()
 
-            // 3. On success, update the published property.
-            self.groupedTasks = fetchedGroupedTasks
-            print("🔥 VIEWMODEL: Updated groupedTasks property")
+                // Check if task was cancelled
+                if Task.isCancelled { return }
 
-        } catch {
-            // 4. On failure, capture a user-friendly error message.
-            self.errorMessage = "Failed to load tasks. Please check your connection and try again."
-            print("Error fetching dashboard data: \(error)")
+                print("🔥 VIEWMODEL: Successfully received grouped tasks from OfflineAPIService")
+                print("🔥 VIEWMODEL: - Pending: \(fetchedGroupedTasks.pending.count)")
+                print("🔥 VIEWMODEL: - Picking: \(fetchedGroupedTasks.picking.count)")
+                print("🔥 VIEWMODEL: - Packed: \(fetchedGroupedTasks.packed.count)")
+                print("🔥 VIEWMODEL: - Inspecting: \(fetchedGroupedTasks.inspecting.count)")
+                print("🔥 VIEWMODEL: - Completed: \(fetchedGroupedTasks.completed.count)")
+                print("🔥 VIEWMODEL: - Paused: \(fetchedGroupedTasks.paused.count)")
+                print("🔥 VIEWMODEL: - Cancelled: \(fetchedGroupedTasks.cancelled.count)")
+
+                // 3. On success, update the published property.
+                self.groupedTasks = fetchedGroupedTasks
+                print("🔥 VIEWMODEL: Updated groupedTasks property")
+
+            } catch {
+                // Check if task was cancelled
+                if Task.isCancelled { return }
+
+                // 4. On failure, capture a user-friendly error message.
+                self.errorMessage = "Failed to load tasks. Please check your connection and try again."
+                print("Error fetching dashboard data: \(error)")
+            }
+
+            // 5. Ensure isLoading is set to false once the operation completes.
+            self.isLoading = false
         }
-        
-        // 5. Ensure isLoading is set to false once the operation completes.
-        self.isLoading = false
+
+        await currentFetchTask?.value
     }
     
     // MARK: - Computed Properties for the View

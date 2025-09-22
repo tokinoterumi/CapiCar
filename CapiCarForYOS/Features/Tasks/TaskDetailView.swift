@@ -64,6 +64,18 @@ struct TaskDetailView: View {
         .navigationTitle(viewModel.task.orderName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(content: {
+            // Report Issue button (always available)
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: { showingReportIssueView = true }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle")
+                        Text("Report")
+                    }
+                    .foregroundColor(.orange)
+                }
+                .disabled(viewModel.isLoading)
+            }
+
             // Toolbar button for the "Pause" escape hatch - only show for active work statuses
             if canShowPauseButton {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -140,7 +152,7 @@ struct TaskDetailView: View {
     private var checklistSection: some View {
         VStack(alignment: .leading) {
             HStack {
-                Text("Items to Pick")
+                Text("Packing List")
                     .font(.title3.bold())
 
                 Spacer()
@@ -159,8 +171,8 @@ struct TaskDetailView: View {
     
     private var footerActionView: some View {
         VStack(spacing: 16) {
-            // Conditionally show input fields when picked and ready for packing
-            if viewModel.task.status == .picked {
+            // Conditionally show input fields when picked and ready for packing, or when correcting
+            if viewModel.task.status == .picked || viewModel.task.status == .correcting {
                 HStack(spacing: 16) {
                     TextField("Weight (kg)", text: $viewModel.weightInput)
                         .keyboardType(.decimalPad)
@@ -184,18 +196,6 @@ struct TaskDetailView: View {
                 }
             }
 
-            // Secondary actions for all statuses
-            HStack(spacing: 12) {
-                PrimaryButton(
-                    title: "Report Issue",
-                    isSecondary: true,
-                    isDestructive: true
-                ) {
-                    showingReportIssueView = true
-                }
-
-                // Pause is already in toolbar, but could add here if needed
-            }
 
             // Main action button - only show when there's an action available
             if !viewModel.primaryActionText.isEmpty {
@@ -205,12 +205,13 @@ struct TaskDetailView: View {
                     isDisabled: !viewModel.canPerformPrimaryAction,
                     action: {
                         Task {
-                            // Check if this is the "Packing Completed" action before execution
-                            let shouldDismiss = viewModel.task.status == .picked && viewModel.primaryActionText == "Packing Completed"
+                            // Check if this is an action that should dismiss the view after completion
+                            let shouldDismiss = (viewModel.task.status == .picked && viewModel.primaryActionText == "Packing Completed") ||
+                                              (viewModel.task.status == .correcting && viewModel.primaryActionText == "Complete Correction")
 
                             await viewModel.handlePrimaryAction()
 
-                            // Dismiss the view after "Packing Completed" action completes
+                            // Dismiss the view after completion
                             if shouldDismiss {
                                 dismiss()
                             }
