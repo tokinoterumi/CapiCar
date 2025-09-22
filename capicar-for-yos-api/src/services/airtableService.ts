@@ -25,7 +25,7 @@ export class AirtableService {
                 })
                 .all();
 
-            return await this.mapTaskRecords(records); // Use batch mapping
+            return await this.mapTaskRecords([...records]); // Convert readonly array to mutable
         } catch (error) {
             console.error('Error fetching tasks:', error);
             throw new Error('Failed to fetch tasks from Airtable');

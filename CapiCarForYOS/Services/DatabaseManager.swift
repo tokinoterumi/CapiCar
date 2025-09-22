@@ -535,33 +535,6 @@ class DatabaseManager {
 
 // MARK: - Helper Extensions
 
-extension LocalTaskStatus {
-    init(from taskStatus: TaskStatus) {
-        switch taskStatus {
-        case .pending:
-            self = .pending
-        case .picking:
-            self = .picking
-        case .picked:
-            self = .picked
-        case .packed:
-            self = .packed
-        case .inspecting:
-            self = .inspecting
-        case .inspected:
-            self = .inspecting // Map inspected to inspecting since LocalTaskStatus doesn't have inspected
-        case .completed:
-            self = .completed
-        case .cancelled:
-            self = .cancelled
-        case .correctionNeeded:
-            self = .correcting // Map to closest available status
-        case .correcting:
-            self = .correcting
-        }
-    }
-}
-
 // MARK: - Temporary LocalStaff model for compilation
 
 /// Temporary stub for LocalStaff until full staff model is implemented

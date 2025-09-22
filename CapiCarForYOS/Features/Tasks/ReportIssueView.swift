@@ -75,11 +75,9 @@ struct ReportIssueView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical)
-        .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(12)
     }
 
-    // 📝 詳細記録 / Detailed Logging Section
     private var loggingInfoSection: some View {
         VStack(alignment: .leading, spacing: 16) {
 
@@ -157,7 +155,6 @@ struct ReportIssueView: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(12)
     }
 
@@ -180,7 +177,6 @@ struct ReportIssueView: View {
                 .foregroundColor(.secondary)
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(12)
     }
 
