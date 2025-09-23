@@ -7,8 +7,20 @@ const router = express.Router();
 // Returns dashboard data in the format the Swift client's `DashboardData` model expects.
 router.get('/', async (req, res) => {
     try {
-        // 1. Fetch the actual tasks from the database with granular status grouping.
-        const granularGroupedTasks = await airtableService.getTasksGroupedByStatus();
+        // Check for conditional requests (If-None-Match header)
+        const clientETag = req.get('If-None-Match');
+
+        // 1. Fetch the actual tasks from the database with optimized caching
+        const { grouped: granularGroupedTasks, lastModified, etag } = await airtableService.getTasksGroupedByStatusOptimized();
+
+        // If client has current data, return 304 Not Modified
+        if (clientETag && clientETag === etag) {
+            console.log('📦 HTTP CACHE HIT: Client has current data, returning 304');
+            res.status(304).end();
+            return;
+        }
+
+        console.log('🔄 HTTP CACHE MISS: Generating fresh response');
 
         // 2. Transform granular groups into simplified user-friendly groups
         const simplifiedGroupedTasks = {
@@ -44,14 +56,19 @@ router.get('/', async (req, res) => {
         const dashboardData = {
             tasks: simplifiedGroupedTasks,
             stats: stats,
-            lastUpdated: new Date().toISOString()
+            lastUpdated: lastModified
         };
+
+        // Set caching headers
+        res.setHeader('ETag', etag);
+        res.setHeader('Last-Modified', new Date(lastModified).toUTCString());
+        res.setHeader('Cache-Control', 'private, must-revalidate, max-age=0');
 
         // Add conflict resolution headers for debugging
         res.setHeader('X-Server-Timestamp', new Date().toISOString());
-        res.setHeader('X-Dashboard-Generated', dashboardData.lastUpdated);
+        res.setHeader('X-Dashboard-Generated', lastModified);
 
-        // 6. Send the response in the format iOS app expects
+        // 5. Send the response in the format iOS app expects
         res.json({
             success: true,
             data: dashboardData

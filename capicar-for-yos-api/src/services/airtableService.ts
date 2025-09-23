@@ -12,6 +12,25 @@ const STAFF_TABLE = 'Staff';
 const ORDERS_TABLE = 'Orders';
 const AUDIT_LOG_TABLE = 'Audit_Log';
 
+// Cache for dashboard data optimization
+interface DashboardCache {
+    data: any;
+    timestamp: number;
+    lastModified: string;
+    etag: string;
+}
+
+let dashboardCache: DashboardCache | null = null;
+const CACHE_TTL = 30000; // 30 seconds cache TTL
+
+// Cache invalidation helper
+function invalidateDashboardCache(reason: string) {
+    if (dashboardCache) {
+        console.log(`🗑️ CACHE INVALIDATED: ${reason}`);
+        dashboardCache = null;
+    }
+}
+
 export class AirtableService {
 
     // MARK: - Tasks Operations
@@ -28,6 +47,63 @@ export class AirtableService {
             return await this.mapTaskRecords([...records]); // Convert readonly array to mutable
         } catch (error) {
             console.error('Error fetching tasks:', error);
+            throw new Error('Failed to fetch tasks from Airtable');
+        }
+    }
+
+    async getAllTasksOptimized(): Promise<{ tasks: FulfillmentTask[], lastModified: string, etag: string }> {
+        try {
+            // Check if we can use cached data
+            const now = Date.now();
+            if (dashboardCache && (now - dashboardCache.timestamp) < CACHE_TTL) {
+                console.log('📦 CACHE HIT: Using cached dashboard data');
+                return {
+                    tasks: dashboardCache.data,
+                    lastModified: dashboardCache.lastModified,
+                    etag: dashboardCache.etag
+                };
+            }
+
+            console.log('🔄 CACHE MISS: Fetching fresh data from Airtable');
+            const records = await base(TASKS_TABLE)
+                .select({
+                    view: 'Grid view',
+                    sort: [{ field: 'created_at', direction: 'desc' }]
+                })
+                .all();
+
+            // Generate cache keys based on data modification times
+            const lastModified = new Date().toISOString();
+            const recordsHash = records.map(r => `${r.id}-${r.get('updated_at')}`).join('|');
+            const etag = `"${Buffer.from(recordsHash).toString('base64').substring(0, 16)}"`;
+
+            // Check if data actually changed (quick hash comparison)
+            if (dashboardCache && dashboardCache.etag === etag) {
+                console.log('📊 DATA UNCHANGED: Using existing processed data');
+                // Update timestamp but keep existing data
+                dashboardCache.timestamp = now;
+                return {
+                    tasks: dashboardCache.data,
+                    lastModified: dashboardCache.lastModified,
+                    etag: dashboardCache.etag
+                };
+            }
+
+            // Data changed or no cache - process with batch mapping
+            console.log('🔄 DATA CHANGED: Processing with batch mapping');
+            const tasks = await this.mapTaskRecords([...records]);
+
+            // Cache the results
+            dashboardCache = {
+                data: tasks,
+                timestamp: now,
+                lastModified,
+                etag
+            };
+
+            return { tasks, lastModified, etag };
+        } catch (error) {
+            console.error('Error fetching optimized tasks:', error);
             throw new Error('Failed to fetch tasks from Airtable');
         }
     }
@@ -92,11 +168,16 @@ export class AirtableService {
                     status,
                     `Status updated to ${status}`
                 );
+                // Invalidate cache after successful update
+                invalidateDashboardCache(`Task ${taskId} status updated to ${status}`);
                 return result.task;
             } else {
                 // Direct update for system operations (no audit needed)
                 const record = await base(TASKS_TABLE).update(taskId, updateFields);
-                return await this.mapTaskRecord(record);
+                const mappedTask = await this.mapTaskRecord(record);
+                // Invalidate cache after successful update
+                invalidateDashboardCache(`Task ${taskId} status updated to ${status} (system)`);
+                return mappedTask;
             }
         } catch (error) {
             console.error('Error updating task status:', error);
@@ -197,7 +278,7 @@ export class AirtableService {
         try {
             const records = await base(STAFF_TABLE).select().all();
             return records.map(record => ({
-                id: record.id,
+                id: record.get('staff_id') as string, // Use staff_id field instead of record ID
                 name: record.get('name') as string
             }));
         } catch (error) {
@@ -208,11 +289,21 @@ export class AirtableService {
 
     async getStaffById(staffId: string): Promise<StaffMember | null> {
         try {
-            const record = await base(STAFF_TABLE).find(staffId);
-            return {
-                id: record.id,
-                name: record.get('name') as string
-            };
+            // Find staff record by staff_id field value instead of record ID
+            const records = await base(STAFF_TABLE)
+                .select({
+                    filterByFormula: `{staff_id} = '${staffId}'`
+                })
+                .all();
+
+            if (records.length > 0) {
+                const record = records[0];
+                return {
+                    id: record.get('staff_id') as string,
+                    name: record.get('name') as string
+                };
+            }
+            return null;
         } catch (error) {
             console.error('Error fetching staff member:', error);
             return null;
@@ -226,15 +317,19 @@ export class AirtableService {
                 is_active: true
             };
 
-            // If staffId is provided, use it, otherwise let Airtable auto-generate
+            // If staffId is provided, use it, otherwise generate a simple one
             if (staffId) {
                 fields.staff_id = staffId;
+            } else {
+                // Generate a simple staff ID based on name (you can customize this logic)
+                const timestamp = Date.now().toString().slice(-4);
+                fields.staff_id = `STAFF_${name.toUpperCase().replace(/\s+/g, '_')}_${timestamp}`;
             }
 
             const record: any = await base(STAFF_TABLE).create(fields);
             return {
-                id: record.id,
-                name: record.fields.name as string
+                id: record.get('staff_id') as string, // Return staff_id instead of record ID
+                name: record.get('name') as string
             };
         } catch (error) {
             console.error('Error creating staff member:', error);
@@ -244,12 +339,23 @@ export class AirtableService {
 
     async updateStaff(staffId: string, name: string): Promise<StaffMember | null> {
         try {
-            const record: any = await base(STAFF_TABLE).update(staffId, {
+            // First find the record by staff_id
+            const records = await base(STAFF_TABLE)
+                .select({
+                    filterByFormula: `{staff_id} = '${staffId}'`
+                })
+                .all();
+
+            if (records.length === 0) {
+                return null;
+            }
+
+            const record: any = await base(STAFF_TABLE).update(records[0].id, {
                 name: name
             });
             return {
-                id: record.id,
-                name: record.fields.name as string
+                id: record.get('staff_id') as string,
+                name: record.get('name') as string
             };
         } catch (error) {
             console.error('Error updating staff member:', error);
@@ -259,7 +365,18 @@ export class AirtableService {
 
     async deleteStaff(staffId: string): Promise<boolean> {
         try {
-            await base(STAFF_TABLE).destroy(staffId);
+            // First find the record by staff_id
+            const records = await base(STAFF_TABLE)
+                .select({
+                    filterByFormula: `{staff_id} = '${staffId}'`
+                })
+                .all();
+
+            if (records.length === 0) {
+                return false;
+            }
+
+            await base(STAFF_TABLE).destroy(records[0].id);
             return true;
         } catch (error) {
             console.error('Error deleting staff member:', error);
@@ -790,7 +907,7 @@ export class AirtableService {
             if (records.length > 0) {
                 const record = records[0];
                 return {
-                    id: record.id, // Return Airtable record ID
+                    id: record.get('staff_id') as string, // Return staff_id instead of record ID
                     name: record.get('name') as string
                 };
             }
@@ -828,6 +945,40 @@ export class AirtableService {
             paused: allTasks.filter(task => task.isPaused === true),
             cancelled: allTasks.filter(task => task.status === TaskStatus.CANCELLED)
         };
+    }
+
+    async getTasksGroupedByStatusOptimized(): Promise<{
+        grouped: {
+            pending: FulfillmentTask[];
+            picking: FulfillmentTask[];
+            picked: FulfillmentTask[];
+            packed: FulfillmentTask[];
+            inspecting: FulfillmentTask[];
+            correctionNeeded: FulfillmentTask[];
+            correcting: FulfillmentTask[];
+            completed: FulfillmentTask[];
+            paused: FulfillmentTask[];
+            cancelled: FulfillmentTask[];
+        },
+        lastModified: string,
+        etag: string
+    }> {
+        const { tasks, lastModified, etag } = await this.getAllTasksOptimized();
+
+        const grouped = {
+            pending: tasks.filter(task => task.status === TaskStatus.PENDING && !task.isPaused),
+            picking: tasks.filter(task => task.status === TaskStatus.PICKING && !task.isPaused),
+            picked: tasks.filter(task => task.status === TaskStatus.PICKED && !task.isPaused),
+            packed: tasks.filter(task => task.status === TaskStatus.PACKED && !task.isPaused),
+            inspecting: tasks.filter(task => task.status === TaskStatus.INSPECTING && !task.isPaused),
+            correctionNeeded: tasks.filter(task => task.status === TaskStatus.CORRECTION_NEEDED && !task.isPaused),
+            correcting: tasks.filter(task => task.status === TaskStatus.CORRECTING && !task.isPaused),
+            completed: tasks.filter(task => task.status === TaskStatus.COMPLETED),
+            paused: tasks.filter(task => task.isPaused === true),
+            cancelled: tasks.filter(task => task.status === TaskStatus.CANCELLED)
+        };
+
+        return { grouped, lastModified, etag };
     }
 }
 

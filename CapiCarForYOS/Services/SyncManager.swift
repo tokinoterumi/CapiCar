@@ -233,6 +233,26 @@ class SyncManager: ObservableObject {
                 // This shouldn't happen since we handle this in the outer switch
                 break
             }
+        case .pendingPrioritySync:
+            // 優先同步任務：處理方式與 pendingSync 相同，但具有更高優先級
+            switch localTask.status {
+            case .completed, .cancelled:
+                try databaseManager.deleteSyncedTask(taskId: localTask.id)
+                print("已從本地刪除優先同步的已終結任務: \(localTask.id)")
+            case .pending, .picking, .picked, .packed, .inspecting, .correctionNeeded, .correcting:
+                try databaseManager.markTaskAsSynced(taskId: localTask.id)
+                print("已將優先同步的進行中任務標記為同步完成: \(localTask.id)")
+            case .pausedPendingSync:
+                break
+            }
+        case .conflictPendingResolution:
+            // 衝突待解決：標記為已同步，但可能需要額外處理
+            try databaseManager.markTaskAsSynced(taskId: localTask.id)
+            print("衝突任務已同步，需要進一步檢查: \(localTask.id)")
+        case .pendingSyncWithSequenceDrift:
+            // 序列漂移風險：同步成功後標記為已同步
+            try databaseManager.markTaskAsSynced(taskId: localTask.id)
+            print("序列漂移任務已成功同步: \(localTask.id)")
         case .synced, .error:
             // 這些狀態不應該在待同步列表中
             break
