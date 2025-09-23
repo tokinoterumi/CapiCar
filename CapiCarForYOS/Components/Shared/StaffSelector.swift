@@ -77,7 +77,7 @@ struct StaffSelector: View {
                 // Refresh button
                 Button(action: {
                     Task {
-                        await dashboardViewModel.fetchDashboardData()
+                        await dashboardViewModel.forceFetchDashboardData()
                     }
                 }) {
                     if dashboardViewModel.isLoading {

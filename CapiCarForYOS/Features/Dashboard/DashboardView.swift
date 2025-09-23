@@ -79,8 +79,8 @@ struct DashboardView: View {
         .listStyle(.insetGrouped) // A modern list style that works well with sections.
         .refreshable {
             // Allows the user to pull-to-refresh.
-            // This requires viewModel.fetchDashboardData() to be an 'async' function.
-            await viewModel.fetchDashboardData()
+            // Use force refresh for explicit user action
+            await viewModel.forceFetchDashboardData()
         }
     }
     
@@ -106,7 +106,7 @@ struct DashboardView: View {
             
             PrimaryButton(title: "Retry", action: {
                 Task {
-                    await viewModel.fetchDashboardData()
+                    await viewModel.forceFetchDashboardData()
                 }
             })
         }
