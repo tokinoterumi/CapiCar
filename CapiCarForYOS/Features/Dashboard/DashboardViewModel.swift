@@ -14,9 +14,11 @@ class DashboardViewModel: ObservableObject {
 
     private let offlineAPIService = OfflineAPIService.shared
 
-    // MARK: - Request Deduplication
+    // MARK: - Request Deduplication & Throttling
 
     private var currentFetchTask: Task<Void, Never>?
+    private var lastFetchTime: Date = .distantPast
+    private let throttleInterval: TimeInterval = 2.0 // Minimum 2 seconds between requests
 
     // MARK: - Initialization
 
@@ -28,10 +30,21 @@ class DashboardViewModel: ObservableObject {
     
     /// Fetches all the necessary data for the dashboard from the backend API.
     func fetchDashboardData() async {
+        // Throttle requests - prevent too frequent API calls
+        let now = Date()
+        let timeSinceLastFetch = now.timeIntervalSince(lastFetchTime)
+
+        if timeSinceLastFetch < throttleInterval {
+            print("🚦 THROTTLE: Dashboard fetch throttled (last fetch \(String(format: "%.1f", timeSinceLastFetch))s ago)")
+            return
+        }
+
         // Cancel any existing fetch task to prevent multiple simultaneous requests
         currentFetchTask?.cancel()
 
         currentFetchTask = Task {
+            // Update last fetch time
+            self.lastFetchTime = Date()
             // 1. Set initial state.
             self.isLoading = true
             self.errorMessage = nil
@@ -70,6 +83,13 @@ class DashboardViewModel: ObservableObject {
         }
 
         await currentFetchTask?.value
+    }
+
+    /// Force refresh dashboard data, bypassing throttling (for explicit user actions)
+    func forceFetchDashboardData() async {
+        print("🔄 FORCE REFRESH: Bypassing throttle for explicit user action")
+        lastFetchTime = .distantPast // Reset throttle
+        await fetchDashboardData()
     }
     
     // MARK: - Computed Properties for the View

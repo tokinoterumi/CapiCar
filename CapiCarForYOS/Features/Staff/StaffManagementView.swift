@@ -8,8 +8,8 @@ struct StaffManagementView: View {
     @EnvironmentObject private var staffManager: StaffManager
     @EnvironmentObject private var syncManager: SyncManager
     @State private var showingAddStaff = false
+    @State private var showingEditStaff = false
     @State private var editingStaff: StaffMember?
-    @State private var editingName = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var staffToDelete: StaffMember?
@@ -49,10 +49,10 @@ struct StaffManagementView: View {
                         ForEach(staffManager.availableStaff, id: \.id) { staff in
                             StaffRow(
                                 staff: staff,
-                                isEditing: editingStaff?.id == staff.id,
+                                isEditing: false, // Remove inline editing state
                                 onEdit: {
                                     editingStaff = staff
-                                    editingName = staff.name
+                                    showingEditStaff = true
                                 },
                                 onDelete: {
                                     staffToDelete = staff
@@ -79,39 +79,6 @@ struct StaffManagementView: View {
                         .listRowBackground(Color(.secondarySystemGroupedBackground))
                     }
                 }
-
-                // MARK: - Inline Edit Field
-                if let editingStaff = editingStaff {
-                    Divider()
-
-                    VStack(spacing: 12) {
-                        HStack {
-                            Text("Editing: \(editingStaff.name)")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-
-                        HStack(spacing: 12) {
-                            TextField("Staff Name", text: $editingName)
-                                .textFieldStyle(.roundedBorder)
-
-                            Button("Save") {
-                                saveEdit()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(editingName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                            Button("Cancel") {
-                                cancelEdit()
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                    .padding()
-                    .background(Color(.systemGray6))
-                }
-
             }
             .navigationTitle("Staff Management")
             .navigationBarTitleDisplayMode(.automatic)
@@ -137,6 +104,19 @@ struct StaffManagementView: View {
                         }
                     }
                     showingAddStaff = false
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditStaff) {
+            if let staff = editingStaff {
+                EditStaffSheet(staff: staff) { updatedName in
+                    Task {
+                        let success = await updateStaffMember(id: staff.id, name: updatedName)
+                        if success {
+                            showingEditStaff = false
+                            editingStaff = nil
+                        }
+                    }
                 }
             }
         }
@@ -171,22 +151,6 @@ struct StaffManagementView: View {
         }
     }
 
-    private func saveEdit() {
-        guard let staff = editingStaff else { return }
-
-        Task {
-            let success = await updateStaffMember(id: staff.id, name: editingName)
-            if success {
-                editingStaff = nil
-                editingName = ""
-            }
-        }
-    }
-
-    private func cancelEdit() {
-        editingStaff = nil
-        editingName = ""
-    }
 
     // MARK: - Staff API Methods
 
@@ -302,7 +266,7 @@ struct StaffManagementView: View {
 
 struct StaffRow: View {
     let staff: StaffMember
-    let isEditing: Bool
+    let isEditing: Bool // Keep for compatibility but not used
     let onEdit: () -> Void
     let onDelete: () -> Void
 
@@ -312,13 +276,13 @@ struct StaffRow: View {
             HStack(spacing: 12) {
                 Image(systemName: "person.circle.fill")
                     .font(.title2)
-                    .foregroundColor(isEditing ? .orange : .blue)
+                    .foregroundColor(.blue)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(staff.name)
                         .font(.body)
-                        .fontWeight(isEditing ? .semibold : .medium)
-                        .foregroundColor(isEditing ? .orange : .primary)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
 
                     Text("ID: \(staff.id)")
                         .font(.caption)
@@ -328,48 +292,130 @@ struct StaffRow: View {
 
             Spacer()
 
-            // Action buttons (hidden when editing)
-            if !isEditing {
-                HStack(spacing: 16) {
-                    Button {
-                        print("🔵 Edit button PRESSED for: \(staff.name)")
-                        onEdit()
-                    } label: {
-                        Text("Edit")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(Color.blue)
-                            .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        print("🔴 Delete button PRESSED for: \(staff.name)")
-                        onDelete()
-                    } label: {
-                        Text("Delete")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(Color.red)
-                            .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
+            // Action buttons
+            HStack(spacing: 16) {
+                Button {
+                    print("🔵 Edit button PRESSED for: \(staff.name)")
+                    onEdit()
+                } label: {
+                    Text("Edit")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.blue)
+                        .cornerRadius(8)
                 }
-            } else {
-                Text("Editing...")
-                    .font(.caption)
-                    .foregroundColor(.orange)
+                .buttonStyle(.plain)
+
+                Button {
+                    print("🔴 Delete button PRESSED for: \(staff.name)")
+                    onDelete()
+                } label: {
+                    Text("Delete")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.red)
+                        .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 4)
-        .background(isEditing ? Color.orange.opacity(0.1) : Color.clear)
+        .background(Color.clear)
         .cornerRadius(8)
+    }
+}
+
+// MARK: - Edit Staff Sheet
+
+struct EditStaffSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var staffName: String
+    @State private var isUpdating = false
+    let staff: StaffMember
+    let onUpdate: (String) -> Void
+
+    init(staff: StaffMember, onUpdate: @escaping (String) -> Void) {
+        self.staff = staff
+        self.onUpdate = onUpdate
+        self._staffName = State(initialValue: staff.name)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                // Staff Icon and Current Name
+                VStack(spacing: 16) {
+                    Image(systemName: "person.circle.fill")
+                        .font(.system(size: 80))
+                        .foregroundColor(.blue)
+
+                    VStack(spacing: 4) {
+                        Text("Editing Staff Member")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+
+                        Text("ID: \(staff.id)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                // Edit Field
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Staff Name")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+
+                    TextField("Enter staff name", text: $staffName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.body)
+                        .disabled(isUpdating)
+                }
+                .padding(.horizontal)
+
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Edit Staff")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(isUpdating)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        updateStaff()
+                    }
+                    .disabled(staffName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isUpdating)
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    private func updateStaff() {
+        let trimmedName = staffName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        isUpdating = true
+        onUpdate(trimmedName)
+
+        // Brief delay then dismiss (the parent will handle dismissal on success)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if isUpdating {
+                dismiss() // Fallback dismiss if parent doesn't handle it
+            }
+        }
     }
 }
 
