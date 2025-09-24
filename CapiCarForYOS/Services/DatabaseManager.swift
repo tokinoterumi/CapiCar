@@ -212,29 +212,90 @@ class DatabaseManager {
 
     // MARK: - Additional Methods for OfflineAPIService Support
 
-    /// Save multiple tasks from API response
+    /// Save multiple tasks from API response using Latest-data wins conflict resolution
     func saveTasks(_ tasks: [FulfillmentTask]) throws {
-        print("🔥 DATABASE: Starting to save \(tasks.count) tasks")
-        // For now, just save them as individual tasks
-        // In a full implementation, we might want to batch this operation
-        for task in tasks {
-            print("🔥 DATABASE: Processing task \(task.id) (\(task.orderName)) - status: \(task.status)")
-            // Convert FulfillmentTask to LocalTask for storage
-            if let currentOperator = task.currentOperator {
-                print("🔥 DATABASE: Task has operator: \(currentOperator.name)")
-                // Task has an operator - use existing method
-                let localTask = LocalTask.fromFulfillmentTask(task, assignedTo: currentOperator)
-                try saveLocalTask(localTask)
-            } else {
-                print("🔥 DATABASE: Task has no operator - creating without operator")
-                // Task doesn't have an operator yet (e.g., pending tasks)
-                // Create a LocalTask without operator assignment
-                let localTask = LocalTask.fromFulfillmentTaskWithoutOperator(task)
-                try saveLocalTask(localTask)
-            }
-            print("🔥 DATABASE: Successfully saved task \(task.id)")
+        print("🔥 DATABASE: Starting Latest-data wins merge for \(tasks.count) tasks")
+
+        for serverTask in tasks {
+            try saveTaskWithConflictResolution(serverTask)
         }
-        print("🔥 DATABASE: Finished saving all \(tasks.count) tasks")
+
+        print("🔥 DATABASE: Finished Latest-data wins merge for \(tasks.count) tasks")
+    }
+
+    /// Save a single task with operationSequence-based conflict resolution
+    private func saveTaskWithConflictResolution(_ serverTask: FulfillmentTask) throws {
+        let taskId = serverTask.id
+        let serverSequence = serverTask.operationSequence ?? 0
+
+        print("🔍 CONFLICT RESOLUTION: Processing task \(taskId) - server sequence: \(serverSequence)")
+
+        // Try to find existing local task
+        if let existingLocalTask = try fetchLocalTask(id: taskId) {
+            let localSequence = existingLocalTask.operationSequence
+
+            print("🔍 CONFLICT RESOLUTION: Found existing task \(taskId)")
+            print("🔍 CONFLICT RESOLUTION: Local sequence: \(localSequence), Server sequence: \(serverSequence)")
+
+            if serverSequence > localSequence {
+                // Server data is newer - update local task
+                print("✅ LATEST-DATA WINS: Server data is newer, updating local task \(taskId)")
+
+                // Update existing task with server data while preserving local metadata
+                existingLocalTask.name = serverTask.orderName
+                existingLocalTask.soNumber = serverTask.shippingName
+                existingLocalTask.status = LocalTaskStatus(from: serverTask.status)
+                existingLocalTask.isPaused = serverTask.isPaused ?? false
+                existingLocalTask.operationSequence = serverSequence
+                existingLocalTask.lastKnownServerSequence = serverSequence
+
+                // Update operator if present
+                if let serverOperator = serverTask.currentOperator {
+                    existingLocalTask.assignedStaffId = serverOperator.id
+                    existingLocalTask.assignedStaffName = serverOperator.name
+                }
+
+                // Mark as synced since we're getting server data
+                existingLocalTask.syncStatus = .synced
+
+                try mainContext.save()
+
+            } else if serverSequence == localSequence {
+                // Same sequence - data is in sync
+                print("📊 LATEST-DATA WINS: Data already in sync for task \(taskId)")
+                existingLocalTask.syncStatus = .synced
+                try mainContext.save()
+
+            } else {
+                // Local data is newer - keep local changes
+                print("🏠 LATEST-DATA WINS: Local data is newer, preserving local changes for task \(taskId)")
+                // Update last known server sequence for reference but keep local data
+                existingLocalTask.lastKnownServerSequence = serverSequence
+                try mainContext.save()
+            }
+
+        } else {
+            // New task from server - create local copy
+            print("🆕 LATEST-DATA WINS: New task from server \(taskId), creating local copy")
+
+            let newLocalTask: LocalTask
+            if let currentOperator = serverTask.currentOperator {
+                newLocalTask = LocalTask.fromFulfillmentTask(serverTask, assignedTo: currentOperator)
+            } else {
+                newLocalTask = LocalTask.fromFulfillmentTaskWithoutOperator(serverTask)
+            }
+
+            // New server task is always synced
+            newLocalTask.syncStatus = .synced
+
+            mainContext.insert(newLocalTask)
+            try mainContext.save()
+        }
+    }
+
+    /// Update a single task with sequence-based conflict resolution (used for task actions)
+    func updateTaskWithSequenceResolution(_ serverTask: FulfillmentTask) throws {
+        try saveTaskWithConflictResolution(serverTask)
     }
 
     /// Fetch all tasks and convert to FulfillmentTasks

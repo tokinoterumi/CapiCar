@@ -77,13 +77,19 @@ router.post('/action', async (req, res) => {
                 break;
 
             case TaskAction.START_PACKING:
+                console.log(`🔄 START_PACKING: Received payload:`, payload);
+                console.log(`🔄 VALIDATION: Weight='${payload?.weight}', Dimensions='${payload?.dimensions}'`);
+
                 // Validate payload for weight and dimensions
                 if (!payload?.weight || !payload?.dimensions) {
+                    console.log(`❌ START_PACKING FAILED: Missing weight or dimensions`);
                     return res.status(400).json({
                         success: false,
                         error: 'Weight and dimensions are required for starting packing'
                     });
                 }
+
+                console.log(`✅ START_PACKING VALIDATION PASSED: Proceeding with status update`)
 
                 // Clear operator when transitioning to packed - task becomes available for any inspector
                 updatedTask = await airtableService.updateTaskStatus(

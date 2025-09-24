@@ -14,13 +14,16 @@ struct ChecklistItemView: View {
         HStack(spacing: 16) {
             // In a real app, you'd use an AsyncImage to load the URL.
             // For now, a placeholder is used.
-            Image(systemName: "photo.fill")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 50, height: 50)
-                .background(Color(.systemGray5))
-                .cornerRadius(8)
-                .opacity(item.is_completed ? 0.5 : 1.0)
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(.systemGray5))
+                    .frame(width: 50, height: 50)
+
+                Image(systemName: "photo")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+            }
+            .opacity(item.is_completed ? 0.5 : 1.0)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name)

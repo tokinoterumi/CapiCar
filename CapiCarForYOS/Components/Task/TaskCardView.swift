@@ -12,28 +12,39 @@ struct TaskCardView: View {
     private var statusColor: Color {
         let baseColor: Color
 
-        switch task.groupStatus {
-        case .pending: baseColor = .orange
-        case .picking: baseColor = .blue
-        case .packed: baseColor = .cyan
-        case .inspecting, .inspected: baseColor = .purple
-        case .completed: baseColor = .green
-        case .cancelled: baseColor = .gray
-        case .paused:
+        // Handle correction tasks specifically since they group as "inspecting" but need red/pink color
+        if task.status == .correctionNeeded {
+            baseColor = .red
+        } else if task.status == .correcting {
+            baseColor = .pink
+        } else {
+            switch task.groupStatus {
+            case .pending: baseColor = .orange
+            case .picking: baseColor = .blue
+            case .packed: baseColor = Color(.systemIndigo)
+            case .inspecting, .inspected: baseColor = .teal
+            case .completed: baseColor = .green
+            case .cancelled: baseColor = .gray
+            case .paused:
             // For paused tasks, get the base color from actual work status
             switch task.status {
             case .pending: baseColor = .orange
             case .picking: baseColor = .blue
-            case .picked: baseColor = .cyan
-            case .packed, .inspecting, .inspected: baseColor = .purple
+            case .picked: baseColor = Color(.systemIndigo)
+            case .packed: baseColor = Color(.systemIndigo)
+            case .inspecting, .inspected: baseColor = .teal
             case .correctionNeeded: baseColor = .red
             case .correcting: baseColor = .pink
             case .completed: baseColor = .green
             case .cancelled: baseColor = .gray
             }
-        case .picked, .correctionNeeded, .correcting:
-            // groupStatus should map these to other cases, but including for safety
-            baseColor = .purple
+            case .picked:
+                baseColor = Color(.systemIndigo)
+            case .correctionNeeded:
+                baseColor = .red
+            case .correcting:
+                baseColor = .pink
+            }
         }
 
         // If task is paused, make the color semi-transparent to show paused state

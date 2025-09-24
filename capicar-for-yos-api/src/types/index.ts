@@ -6,6 +6,13 @@ export interface FulfillmentTask {
     createdAt: string;
     checklistJson: string;
     currentOperator?: StaffMember;
+    // Shipping address fields
+    shippingAddress1?: string;
+    shippingAddress2?: string;
+    shippingCity?: string;
+    shippingProvince?: string;
+    shippingZip?: string;
+    shippingPhone?: string;
     // Pause state
     isPaused?: boolean;
     // Exception handling fields

@@ -18,12 +18,8 @@ struct StaffSelector: View {
         .frame(minHeight: 60) // Ensure minimum height
         .background(Color(.systemGray6))
         .animation(.easeInOut(duration: 0.3), value: isExpanded)
-        .onAppear {
-            // Load real staff data from Airtable
-            Task {
-                await staffManager.fetchAvailableStaff()
-            }
-        }
+        // Removed onAppear staff loading - only load when explicitly needed
+        // Staff will be loaded by StaffCheckInView or when user taps refresh
         .onChange(of: staffManager.availableStaff) { _, newStaffList in
             // Always ensure someone is selected when data loads
             if staffManager.currentOperator == nil && !newStaffList.isEmpty {
@@ -74,9 +70,11 @@ struct StaffSelector: View {
 
                 Spacer()
 
-                // Refresh button
+                // Manual refresh button - force refresh both staff and dashboard
                 Button(action: {
                     Task {
+                        // Force refresh both data sources when user explicitly requests it
+                        await staffManager.fetchAvailableStaff()
                         await dashboardViewModel.forceFetchDashboardData()
                     }
                 }) {

@@ -10,6 +10,14 @@ struct FulfillmentTask: Identifiable, Codable, Equatable, Hashable {
     let checklistJson: String
     var currentOperator: StaffMember?
 
+    // Shipping address fields
+    var shippingAddress1: String?
+    var shippingAddress2: String?
+    var shippingCity: String?
+    var shippingProvince: String?
+    var shippingZip: String?
+    var shippingPhone: String?
+
     // Pause state
     var isPaused: Bool?
 

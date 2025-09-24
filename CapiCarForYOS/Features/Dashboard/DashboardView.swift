@@ -40,13 +40,11 @@ struct DashboardView: View {
                 }
             }
             // Navigation is now handled by TaskGroupView sheets
-            // Fetch initial data when the view first appears.
-            .onAppear {
-                // To call an async function from a non-async context, wrap it in a Task.
-                Task {
-                    // This 'await' assumes that fetchDashboardData() in the ViewModel is marked as 'async'.
-                    await viewModel.fetchDashboardData()
-                }
+            // Removed onAppear auto-loading - data loads via pull-to-refresh or explicit user action
+            // Smart refresh when returning to dashboard after potential data changes
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                // Mark data as potentially changed when returning from background
+                viewModel.markDataChangesPending()
             }
         }
     }

@@ -144,8 +144,9 @@ struct TaskPreviewSheet: View {
         switch task.status {
         case .pending: baseColor = .orange
         case .picking: baseColor = .blue
-        case .picked: baseColor = .cyan
-        case .packed, .inspecting, .inspected: baseColor = .purple
+        case .picked: baseColor = Color(.systemIndigo)
+        case .packed: baseColor = Color(.systemIndigo)
+        case .inspecting, .inspected: baseColor = .teal
         case .correctionNeeded: baseColor = .red
         case .correcting: baseColor = .pink
         case .completed: baseColor = .green
@@ -171,15 +172,39 @@ struct TaskPreviewSheet: View {
                 Text(task.shippingName)
                     .font(.body)
                     .fontWeight(.medium)
-                
-                // Mock address - in production this would come from task data
-                Text("123 Apple Park Way")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Text("Cupertino, CA 95014")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+
+                // Real shipping address data from task
+                if let address1 = task.shippingAddress1, !address1.isEmpty {
+                    Text(address1)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                if let address2 = task.shippingAddress2, !address2.isEmpty {
+                    Text(address2)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                // City, Province, ZIP
+                let locationLine = buildLocationLine()
+                if !locationLine.isEmpty {
+                    Text(locationLine)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                // Phone number if available
+                if let phone = task.shippingPhone, !phone.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "phone.fill")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(phone)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -197,24 +222,7 @@ struct TaskPreviewSheet: View {
             if let checklistItems = parseChecklistItems() {
                 VStack(spacing: 8) {
                     ForEach(checklistItems.prefix(3)) { item in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.name)
-                                    .font(.body)
-                                    .lineLimit(1)
-                                
-                                Text(item.sku)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            Text("Qty: \(item.quantity_required)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 4)
+                        ItemPreviewRow(item: item)
                     }
                     
                     if checklistItems.count > 3 {
@@ -549,6 +557,24 @@ struct TaskPreviewSheet: View {
 
     // MARK: - Helper Methods
 
+    private func buildLocationLine() -> String {
+        var components: [String] = []
+
+        if let city = task.shippingCity, !city.isEmpty {
+            components.append(city)
+        }
+
+        if let province = task.shippingProvince, !province.isEmpty {
+            components.append(province)
+        }
+
+        if let zip = task.shippingZip, !zip.isEmpty {
+            components.append(zip)
+        }
+
+        return components.joined(separator: ", ")
+    }
+
     private func fetchLatestTaskData() async {
         isLoading = true
 
@@ -680,6 +706,48 @@ struct TaskPreviewSheet: View {
     }
 }
 
+// MARK: - Item Preview Row Component
+
+struct ItemPreviewRow: View {
+    let item: ChecklistItem
+    @State private var isExpanded = false
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name)
+                    .font(.body)
+                    .lineLimit(isExpanded ? nil : 2)
+                    .multilineTextAlignment(.leading)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isExpanded.toggle()
+                        }
+                    }
+
+                Text(item.sku)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                // Show expand/collapse hint for long text
+                if !isExpanded && item.name.count > 40 {
+                    Text("Tap to expand")
+                        .font(.caption2)
+                        .foregroundColor(.blue)
+                        .padding(.top, 1)
+                }
+            }
+
+            Spacer()
+
+            Text("Qty: \(item.quantity_required)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 // MARK: - Work History Data Structure
 // WorkHistoryEntry is now defined in Models/TaskModels.swift
 
@@ -734,7 +802,7 @@ struct WorkHistoryRow: View {
 #if DEBUG
 struct TaskPreviewSheet_Previews: PreviewProvider {
     static var previews: some View {
-        let mockTask = FulfillmentTask(
+        var mockTask = FulfillmentTask(
             id: "preview_001",
             orderName: "#YM1001",
             status: .pending,
@@ -766,6 +834,14 @@ struct TaskPreviewSheet_Previews: PreviewProvider {
             """,
             currentOperator: nil
         )
+
+        // Add shipping address data for preview
+        mockTask.shippingAddress1 = "1 Apple Park Way"
+        mockTask.shippingAddress2 = "Building 4"
+        mockTask.shippingCity = "Cupertino"
+        mockTask.shippingProvince = "CA"
+        mockTask.shippingZip = "95014"
+        mockTask.shippingPhone = "+1 (408) 996-1010"
         
         let mockStaffManager = StaffManager()
         mockStaffManager.currentOperator = StaffMember(id: "staff1", name: "Test User")

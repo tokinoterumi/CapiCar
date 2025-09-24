@@ -70,10 +70,9 @@ struct StaffCheckInView: View {
             .navigationTitle("Check In")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                if staffManager.availableStaff.isEmpty {
-                    Task {
-                        await staffManager.fetchAvailableStaff()
-                    }
+                Task {
+                    // Use smart refresh instead of checking if empty
+                    await staffManager.fetchAvailableStaffIfNeeded()
                 }
             }
             .alert("Check-In Error", isPresented: .constant(staffManager.errorMessage != nil)) {

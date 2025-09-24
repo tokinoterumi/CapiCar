@@ -31,9 +31,14 @@ class OfflineAPIService {
         print("🔥 CONNECTIVITY: syncManager.isOnline = \(syncManager.isOnline)")
         if syncManager.isOnline {
             do {
+
                 let freshData = try await apiService.fetchDashboardData()
                 print("🔥 DASHBOARD: Successfully fetched fresh data from API")
                 print("🔥 DASHBOARD: Pending tasks: \(freshData.tasks.pending.count)")
+                print("🔥 DASHBOARD: Picking tasks: \(freshData.tasks.picking.count)")
+                print("🔥 DASHBOARD: Packed tasks: \(freshData.tasks.packed.count)")
+                print("🔥 DASHBOARD: Inspecting tasks: \(freshData.tasks.inspecting.count)")
+                print("🔥 DASHBOARD: Completed tasks: \(freshData.tasks.completed.count)")
                 print("🔥 DASHBOARD: Paused tasks: \(freshData.tasks.paused.count)")
                 print("🔥 DASHBOARD: Total tasks in response: \(freshData.stats.total)")
 
@@ -48,9 +53,16 @@ class OfflineAPIService {
                     freshData.tasks.cancelled
                 ].flatMap { $0 }
 
-                print("🔥 DASHBOARD: Total tasks to save to local DB: \(allTasks.count)")
+                print("🔥 DASHBOARD: Total tasks to merge with local DB: \(allTasks.count)")
+                print("🔥 LATEST-DATA WINS: Starting conflict resolution for \(allTasks.count) tasks")
+
+                // Log sequence numbers for debugging
+                for task in allTasks.prefix(3) { // Log first 3 tasks for debugging
+                    print("🔍 SERVER TASK: \(task.id) sequence=\(task.operationSequence ?? 0) status=\(task.status)")
+                }
+
                 try databaseManager.saveTasks(allTasks)
-                print("🔥 DASHBOARD: Successfully saved tasks to local database")
+                print("🔥 LATEST-DATA WINS: Successfully completed conflict resolution merge")
 
                 return freshData
             } catch {
@@ -129,7 +141,7 @@ class OfflineAPIService {
             do {
                 print("🔍 OfflineAPIService: Fetching fresh task from API for \(id)")
                 let freshTask = try await apiService.fetchTask(id: id)
-                try databaseManager.updateTask(freshTask)
+                try databaseManager.updateTaskWithSequenceResolution(freshTask)
                 print("🔍 OfflineAPIService: Fresh task fetched and saved - status: \(freshTask.status)")
                 return freshTask
             } catch {
@@ -163,8 +175,19 @@ class OfflineAPIService {
                     operatorId: operatorId,
                     payload: payload
                 )
-                
-                try databaseManager.updateTask(updatedTask)
+
+                print("🔄 TASK UPDATE: Server returned task \(taskId) with sequence \(updatedTask.operationSequence ?? 0)")
+                try databaseManager.updateTaskWithSequenceResolution(updatedTask)
+
+                // Notify dashboard that task data has changed
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("TaskDataChanged"),
+                        object: nil,
+                        userInfo: ["taskId": taskId, "action": action.rawValue, "newStatus": updatedTask.status.rawValue]
+                    )
+                }
+
                 return updatedTask
                 
             } catch {
@@ -252,7 +275,7 @@ class OfflineAPIService {
         }
         
         // Save optimistic update
-        try databaseManager.updateTask(task)
+        try databaseManager.updateTaskWithSequenceResolution(task)
         
         // Queue the action for sync
         try await syncManager.performTaskActionOffline(
@@ -261,7 +284,16 @@ class OfflineAPIService {
             operatorId: operatorId,
             payload: payload
         )
-        
+
+        // Notify dashboard that task data has changed (offline version)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("TaskDataChanged"),
+                object: nil,
+                userInfo: ["taskId": taskId, "action": action.rawValue]
+            )
+        }
+
         return task
     }
     
@@ -283,7 +315,7 @@ class OfflineAPIService {
                     operatorId: operatorId
                 )
                 
-                try databaseManager.updateTask(updatedTask)
+                try databaseManager.updateTaskWithSequenceResolution(updatedTask)
                 return updatedTask
                 
             } catch {

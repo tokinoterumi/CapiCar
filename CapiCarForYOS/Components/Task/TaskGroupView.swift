@@ -8,25 +8,32 @@ struct TaskGroupView: View {
     // Environment objects
     @EnvironmentObject private var staffManager: StaffManager
     
-    // A private computed property to determine the group's color based on the first task.
-    private var groupColor: Color {
+    // Get unique status colors in the group
+    private var groupColors: [Color] {
         // For paused groups, always use gray regardless of underlying status
         if tasks.first?.isPaused == true {
-            return .gray
+            return [.gray]
         }
 
-        switch tasks.first?.status {
-        case .pending: return .orange
-        case .picking: return .cyan
-        case .picked: return .blue
-        case .packed, .inspecting, .inspected: return .purple
-        case .correctionNeeded: return .red
-        case .correcting: return .pink
-        case .completed: return .green
-        case .cancelled: return .gray
-        case .none: return .gray
+        // Get unique statuses in this group and their colors
+        let uniqueStatuses = Set(tasks.map { $0.status })
+        let colors = uniqueStatuses.compactMap { status -> Color? in
+            switch status {
+            case .pending: return .orange
+            case .picking: return .blue
+            case .picked: return Color(.systemIndigo)
+            case .packed: return Color(.systemIndigo)
+            case .inspecting, .inspected: return .teal
+            case .correctionNeeded: return .red
+            case .correcting: return .pink
+            case .completed: return .green
+            case .cancelled: return .gray
+            }
         }
+
+        return Array(colors)
     }
+
     
     var body: some View {
         // Use a Section for better list styling and accessibility.
@@ -46,18 +53,23 @@ struct TaskGroupView: View {
         } header: {
             // Section Header
             HStack {
-                Circle()
-                    .fill(groupColor)
-                    .frame(width: 8, height: 8)
-                
+                // Multiple status indicators
+                HStack(spacing: 2) {
+                    ForEach(Array(groupColors.enumerated()), id: \.offset) { index, color in
+                        Circle()
+                            .fill(color)
+                            .frame(width: 8, height: 8)
+                    }
+                }
+
                 Text(title)
                     .font(.headline)
                     .fontWeight(.semibold)
-                
+
                 Text("(\(tasks.count))")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-                
+
                 Spacer()
             }
         }

@@ -10,20 +10,44 @@ class DashboardViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
 
+    // MARK: - Smart Loading State Management
+
+    @Published private(set) var hasLoadedInitialData: Bool = false
+    @Published private(set) var lastRefreshTime: Date?
+    @Published private(set) var dataChangesPending: Bool = false
+
     // MARK: - Dependencies
 
     private let offlineAPIService = OfflineAPIService.shared
 
-    // MARK: - Request Deduplication & Throttling
+    // MARK: - Request Deduplication & Smart Refresh
 
     private var currentFetchTask: Task<Void, Never>?
     private var lastFetchTime: Date = .distantPast
     private let throttleInterval: TimeInterval = 2.0 // Minimum 2 seconds between requests
+    private let staleDataThreshold: TimeInterval = 30.0 // Data considered stale after 30 seconds
 
     // MARK: - Initialization
 
     init(apiService: APIService? = nil) {
         // Keep parameter for compatibility, but use OfflineAPIService
+
+        // Listen for task data changes from OfflineAPIService
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("TaskDataChanged"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.markDataChangesPending()
+            // Force refresh dashboard data after task changes
+            Task {
+                await self?.forceFetchDashboardData()
+            }
+        }
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
     
     // MARK: - Public Methods
@@ -65,9 +89,12 @@ class DashboardViewModel: ObservableObject {
                 print("🔥 VIEWMODEL: - Paused: \(fetchedGroupedTasks.paused.count)")
                 print("🔥 VIEWMODEL: - Cancelled: \(fetchedGroupedTasks.cancelled.count)")
 
-                // 3. On success, update the published property.
+                // 3. On success, update the published property and smart loading states.
                 self.groupedTasks = fetchedGroupedTasks
-                print("🔥 VIEWMODEL: Updated groupedTasks property")
+                self.hasLoadedInitialData = true
+                self.lastRefreshTime = Date()
+                self.clearDataChangesPending()
+                print("🔥 VIEWMODEL: Updated groupedTasks property and smart loading states")
 
             } catch {
                 // Check if task was cancelled
@@ -87,9 +114,57 @@ class DashboardViewModel: ObservableObject {
 
     /// Force refresh dashboard data, bypassing throttling (for explicit user actions)
     func forceFetchDashboardData() async {
-        print("🔄 FORCE REFRESH: Bypassing throttle for explicit user action")
         lastFetchTime = .distantPast // Reset throttle
         await fetchDashboardData()
+    }
+
+    /// Smart refresh that only fetches when actually needed
+    func fetchDashboardDataIfNeeded(force: Bool = false) async {
+        // Determine if we need to fetch
+        let shouldFetch = force || shouldRefreshData()
+
+        if shouldFetch {
+            await fetchDashboardData()
+        }
+    }
+
+    /// Check if data should be refreshed based on various conditions
+    private func shouldRefreshData() -> Bool {
+        // Always refresh if we've never loaded data
+        guard hasLoadedInitialData else {
+            print("📋 REFRESH CHECK: Initial load needed")
+            return true
+        }
+
+        // Check if data is stale
+        if let lastRefresh = lastRefreshTime {
+            let timeSinceRefresh = Date().timeIntervalSince(lastRefresh)
+            if timeSinceRefresh > staleDataThreshold {
+                print("📋 REFRESH CHECK: Data is stale (\(String(format: "%.1f", timeSinceRefresh))s old)")
+                return true
+            }
+        }
+
+        // Check if there are pending changes that might affect display
+        if dataChangesPending {
+            print("📋 REFRESH CHECK: Data changes pending")
+            return true
+        }
+
+        // Don't refresh if data is fresh
+        return false
+    }
+
+    /// Mark that data changes are pending (e.g., after task updates)
+    func markDataChangesPending() {
+        dataChangesPending = true
+        print("📋 DATA CHANGES: Marked as pending")
+    }
+
+    /// Clear pending changes flag (called after successful refresh)
+    private func clearDataChangesPending() {
+        dataChangesPending = false
+        print("📋 DATA CHANGES: Cleared pending flag")
     }
     
     // MARK: - Computed Properties for the View

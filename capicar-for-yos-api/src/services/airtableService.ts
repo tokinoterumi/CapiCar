@@ -12,24 +12,6 @@ const STAFF_TABLE = 'Staff';
 const ORDERS_TABLE = 'Orders';
 const AUDIT_LOG_TABLE = 'Audit_Log';
 
-// Cache for dashboard data optimization
-interface DashboardCache {
-    data: any;
-    timestamp: number;
-    lastModified: string;
-    etag: string;
-}
-
-let dashboardCache: DashboardCache | null = null;
-const CACHE_TTL = 30000; // 30 seconds cache TTL
-
-// Cache invalidation helper
-function invalidateDashboardCache(reason: string) {
-    if (dashboardCache) {
-        console.log(`🗑️ CACHE INVALIDATED: ${reason}`);
-        dashboardCache = null;
-    }
-}
 
 export class AirtableService {
 
@@ -51,20 +33,10 @@ export class AirtableService {
         }
     }
 
-    async getAllTasksOptimized(): Promise<{ tasks: FulfillmentTask[], lastModified: string, etag: string }> {
+    async getAllTasksOptimized(): Promise<{ tasks: FulfillmentTask[], lastModified: string }> {
         try {
-            // Check if we can use cached data
-            const now = Date.now();
-            if (dashboardCache && (now - dashboardCache.timestamp) < CACHE_TTL) {
-                console.log('📦 CACHE HIT: Using cached dashboard data');
-                return {
-                    tasks: dashboardCache.data,
-                    lastModified: dashboardCache.lastModified,
-                    etag: dashboardCache.etag
-                };
-            }
+            console.log('🔄 FETCHING FRESH DATA: Always fetching from Airtable for consistency');
 
-            console.log('🔄 CACHE MISS: Fetching fresh data from Airtable');
             const records = await base(TASKS_TABLE)
                 .select({
                     view: 'Grid view',
@@ -72,36 +44,15 @@ export class AirtableService {
                 })
                 .all();
 
-            // Generate cache keys based on data modification times
+            // Simple timestamp for last modified
             const lastModified = new Date().toISOString();
-            const recordsHash = records.map(r => `${r.id}-${r.get('updated_at')}`).join('|');
-            const etag = `"${Buffer.from(recordsHash).toString('base64').substring(0, 16)}"`;
 
-            // Check if data actually changed (quick hash comparison)
-            if (dashboardCache && dashboardCache.etag === etag) {
-                console.log('📊 DATA UNCHANGED: Using existing processed data');
-                // Update timestamp but keep existing data
-                dashboardCache.timestamp = now;
-                return {
-                    tasks: dashboardCache.data,
-                    lastModified: dashboardCache.lastModified,
-                    etag: dashboardCache.etag
-                };
-            }
+            console.log('🔄 PROCESSING: Processing with batch mapping');
 
-            // Data changed or no cache - process with batch mapping
-            console.log('🔄 DATA CHANGED: Processing with batch mapping');
+            // Process with batch mapping
             const tasks = await this.mapTaskRecords([...records]);
 
-            // Cache the results
-            dashboardCache = {
-                data: tasks,
-                timestamp: now,
-                lastModified,
-                etag
-            };
-
-            return { tasks, lastModified, etag };
+            return { tasks, lastModified };
         } catch (error) {
             console.error('Error fetching optimized tasks:', error);
             throw new Error('Failed to fetch tasks from Airtable');
@@ -143,14 +94,8 @@ export class AirtableService {
             }
 
             if (operatorId) {
-                // Get the staff record to extract the staff_id field value
-                try {
-                    const staffRecord = await base(STAFF_TABLE).find(operatorId);
-                    updateFields.current_operator = staffRecord.get('staff_id') as string; // Use staff_id field value
-                } catch (error) {
-                    console.error('Error fetching staff record:', error);
-                    // Don't fail the entire operation if staff lookup fails
-                }
+                // operatorId is already a staff_id value (like "CAT001"), use it directly
+                updateFields.current_operator = operatorId;
             } else {
                 // Explicitly clear the operator field when no operatorId provided
                 updateFields.current_operator = '';
@@ -168,16 +113,11 @@ export class AirtableService {
                     status,
                     `Status updated to ${status}`
                 );
-                // Invalidate cache after successful update
-                invalidateDashboardCache(`Task ${taskId} status updated to ${status}`);
                 return result.task;
             } else {
                 // Direct update for system operations (no audit needed)
                 const record = await base(TASKS_TABLE).update(taskId, updateFields);
-                const mappedTask = await this.mapTaskRecord(record);
-                // Invalidate cache after successful update
-                invalidateDashboardCache(`Task ${taskId} status updated to ${status} (system)`);
-                return mappedTask;
+                return await this.mapTaskRecord(record);
             }
         } catch (error) {
             console.error('Error updating task status:', error);
@@ -232,13 +172,8 @@ export class AirtableService {
 
             // Assign the resuming operator
             if (operatorId) {
-                try {
-                    const staffRecord = await base(STAFF_TABLE).find(operatorId);
-                    updateFields.current_operator = staffRecord.get('staff_id') as string;
-                } catch (error) {
-                    console.error('Error fetching staff record:', error);
-                    // Don't fail the entire operation if staff lookup fails
-                }
+                // operatorId is already a staff_id value (like "CAT001"), use it directly
+                updateFields.current_operator = operatorId;
             }
 
             // Use atomic operation for resume
@@ -287,6 +222,30 @@ export class AirtableService {
         }
     }
 
+    async getAllStaffOptimized(): Promise<{ staff: StaffMember[], lastModified: string }> {
+        try {
+            console.log('🔄 FETCHING FRESH STAFF DATA: Always fetching from Airtable for consistency');
+
+            const records = await base(STAFF_TABLE).select().all();
+
+            // Simple timestamp for last modified
+            const lastModified = new Date().toISOString();
+
+            console.log('🔄 STAFF PROCESSING: Processing fresh staff data');
+
+            // Process fresh data
+            const staff = records.map(record => ({
+                id: record.get('staff_id') as string,
+                name: record.get('name') as string
+            }));
+
+            return { staff, lastModified };
+        } catch (error) {
+            console.error('Error fetching optimized staff:', error);
+            throw new Error('Failed to fetch staff from Airtable');
+        }
+    }
+
     async getStaffById(staffId: string): Promise<StaffMember | null> {
         try {
             // Find staff record by staff_id field value instead of record ID
@@ -306,6 +265,27 @@ export class AirtableService {
             return null;
         } catch (error) {
             console.error('Error fetching staff member:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Helper method to get Airtable record ID from staff_id
+     */
+    async getStaffRecordId(staffId: string): Promise<string | null> {
+        try {
+            const records = await base(STAFF_TABLE)
+                .select({
+                    filterByFormula: `{staff_id} = '${staffId}'`
+                })
+                .all();
+
+            if (records.length > 0) {
+                return records[0].id; // Return the actual Airtable record ID
+            }
+            return null;
+        } catch (error) {
+            console.error('Error fetching staff record ID:', error);
             return null;
         }
     }
@@ -377,6 +357,7 @@ export class AirtableService {
             }
 
             await base(STAFF_TABLE).destroy(records[0].id);
+
             return true;
         } catch (error) {
             console.error('Error deleting staff member:', error);
@@ -461,10 +442,17 @@ export class AirtableService {
         details?: string
     ): Promise<number> {
         try {
-            // First validate that the staff member exists
+            // First validate that the staff member exists and get the record ID
             const staffMember = await this.getStaffById(operatorId);
             if (!staffMember) {
                 console.warn(`⚠️  Skipping audit log - Staff member ${operatorId} not found`);
+                return 0;
+            }
+
+            // Get the Airtable record ID for the staff member
+            const staffRecordId = await this.getStaffRecordId(operatorId);
+            if (!staffRecordId) {
+                console.warn(`⚠️  Skipping audit log - Staff record ID not found for ${operatorId}`);
                 return 0;
             }
 
@@ -474,16 +462,26 @@ export class AirtableService {
             // Map complex action types to simpler ones that exist in Airtable
             const mappedActionType = this.mapActionType(actionType);
 
-            await base(AUDIT_LOG_TABLE).create({
+            // Prepare fields, avoiding empty strings for multiple choice fields
+            const auditFields: any = {
                 timestamp: new Date().toISOString(),
-                staff_id: [operatorId], // Link to Staff (linked record)
+                staff_id: [staffRecordId], // Link to Staff (using actual record ID)
                 task_id: taskId, // Single line text
                 action_type: mappedActionType,
-                old_value: oldValue || '',
-                new_value: newValue || '',
                 details: `${actionType}: ${details || ''}`.trim(), // Include original action in details
                 operation_sequence: nextSequence // Add sequence number
-            });
+            };
+
+            // Only include old_value and new_value if they have actual content
+            // This avoids issues with multiple choice fields that don't accept empty strings
+            if (oldValue && oldValue.trim() !== '') {
+                auditFields.old_value = oldValue.trim();
+            }
+            if (newValue && newValue.trim() !== '') {
+                auditFields.new_value = newValue.trim();
+            }
+
+            await base(AUDIT_LOG_TABLE).create(auditFields);
 
             console.log(`✅ Audit log created: ${actionType} by ${staffMember.name} on task ${taskId} (seq: ${nextSequence})`);
             return nextSequence;
@@ -659,6 +657,13 @@ export class AirtableService {
             createdAt: createdAtISO,
             checklistJson: record.get('checklist_json') as string || '[]',
             currentOperator: currentOperator,
+            // Shipping address fields
+            shippingAddress1: record.get('shipping_address1') as string || undefined,
+            shippingAddress2: record.get('shipping_address2') as string || undefined,
+            shippingCity: record.get('shipping_city') as string || undefined,
+            shippingProvince: record.get('shipping_province') as string || undefined,
+            shippingZip: record.get('shipping_zip') as string || undefined,
+            shippingPhone: record.get('shipping_phone') as string || undefined,
             // Pause state
             isPaused: record.get('is_paused') as boolean || false,
             // Exception handling fields
@@ -728,6 +733,13 @@ export class AirtableService {
             createdAt: createdAtISO,
             checklistJson: record.get('checklist_json') as string || '[]',
             currentOperator: currentOperator,
+            // Shipping address fields
+            shippingAddress1: record.get('shipping_address1') as string || undefined,
+            shippingAddress2: record.get('shipping_address2') as string || undefined,
+            shippingCity: record.get('shipping_city') as string || undefined,
+            shippingProvince: record.get('shipping_province') as string || undefined,
+            shippingZip: record.get('shipping_zip') as string || undefined,
+            shippingPhone: record.get('shipping_phone') as string || undefined,
             // Pause state
             isPaused: record.get('is_paused') as boolean || false,
             // Exception handling fields
@@ -960,10 +972,9 @@ export class AirtableService {
             paused: FulfillmentTask[];
             cancelled: FulfillmentTask[];
         },
-        lastModified: string,
-        etag: string
+        lastModified: string
     }> {
-        const { tasks, lastModified, etag } = await this.getAllTasksOptimized();
+        const { tasks, lastModified } = await this.getAllTasksOptimized();
 
         const grouped = {
             pending: tasks.filter(task => task.status === TaskStatus.PENDING && !task.isPaused),
@@ -978,7 +989,7 @@ export class AirtableService {
             cancelled: tasks.filter(task => task.status === TaskStatus.CANCELLED)
         };
 
-        return { grouped, lastModified, etag };
+        return { grouped, lastModified };
     }
 }
 

@@ -4,10 +4,20 @@ import { airtableService } from '../services/airtableService';
 const router = express.Router();
 
 // GET /api/staff
-// Get all staff members for operator selection
+// Get all staff members for operator selection (optimized with caching)
 router.get('/', async (req, res) => {
     try {
-        const staff = await airtableService.getAllStaff();
+        // Always fetch fresh staff data - no ETag caching complexity
+        const { staff, lastModified } = await airtableService.getAllStaffOptimized();
+
+        // Set no-cache headers for reliable fresh data
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
+        // Add timestamp headers for debugging
+        res.setHeader('X-Server-Timestamp', new Date().toISOString());
+        res.setHeader('X-Staff-Generated', lastModified);
 
         res.json({
             success: true,

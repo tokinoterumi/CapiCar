@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var showingFullWorkflow = false
     @State private var showingInspectionView = false
     @State private var showingCorrectionFlow = false
+    @State private var hasPerformedInitialLoad = false
 
     // Shared task selection handler
     private func selectTask(_ task: FulfillmentTask) {
@@ -92,6 +93,18 @@ struct ContentView: View {
             }
         }
         .accentColor(.blue)
+        .onAppear {
+            // Only perform initial load once when ContentView first appears
+            if !hasPerformedInitialLoad {
+                hasPerformedInitialLoad = true
+                Task {
+                    // Load both staff and dashboard data on first app launch
+                    async let staffLoad = staffManager.fetchAvailableStaffIfNeeded()
+                    async let dashboardLoad = dashboardViewModel.fetchDashboardDataIfNeeded()
+                    await (staffLoad, dashboardLoad)
+                }
+            }
+        }
         .onChange(of: selectedTask) { oldValue, newValue in
             print("🔍 ContentView: selectedTask changed from \(oldValue?.orderName ?? "nil") to \(newValue?.orderName ?? "nil")")
         }
@@ -121,10 +134,7 @@ struct ContentView: View {
             }
         }
         .fullScreenCover(isPresented: $showingFullWorkflow, onDismiss: {
-            // Refresh dashboard data when TaskDetailView is dismissed
-            Task {
-                await dashboardViewModel.fetchDashboardData()
-            }
+            // The notification system already handles the refresh, just clean up UI state
             // Clear selected task to force fresh data when TaskPreviewSheet is opened again
             selectedTask = nil
             // Also dismiss the preview sheet since task status has likely changed
@@ -141,10 +151,8 @@ struct ContentView: View {
         }
         // CorrectionFlowView sheet presentation
         .sheet(isPresented: $showingCorrectionFlow, onDismiss: {
-            // Refresh dashboard data when CorrectionFlowView is dismissed
-            Task {
-                await dashboardViewModel.fetchDashboardData()
-            }
+            // Mark that data changes might be pending after correction flow
+            dashboardViewModel.markDataChangesPending()
             // Clear selected task to prevent stale data in TaskPreviewSheet
             selectedTask = nil
         }) {
@@ -154,10 +162,8 @@ struct ContentView: View {
                     currentOperator: staffManager.currentOperator
                 )
                 .onDisappear {
-                    // Refresh dashboard data when CorrectionFlowView is dismissed
-                    Task {
-                        await dashboardViewModel.fetchDashboardData()
-                    }
+                    // Mark that data changes might be pending after correction
+                    dashboardViewModel.markDataChangesPending()
                     // Clear selected task to prevent stale data in TaskPreviewSheet
                     selectedTask = nil
                 }
@@ -173,10 +179,8 @@ struct ContentView: View {
                     )
                 }
                 .onDisappear {
-                    // Refresh dashboard data when InspectionView is dismissed
-                    Task {
-                        await dashboardViewModel.fetchDashboardData()
-                    }
+                    // Mark that data changes might be pending after inspection
+                    dashboardViewModel.markDataChangesPending()
                     // Clear selected task to prevent stale data in TaskPreviewSheet
                     selectedTask = nil
                 }

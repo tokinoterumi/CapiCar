@@ -5,16 +5,23 @@ import Combine
 class StaffManager: ObservableObject {
     
     // MARK: - Published Properties
-    
+
     @Published var currentOperator: StaffMember?
     @Published var availableStaff: [StaffMember] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
-    
+
+    // MARK: - Smart Loading State Management
+
+    @Published private(set) var hasLoadedInitialData: Bool = false
+    @Published private(set) var lastRefreshTime: Date?
+    @Published private(set) var dataChangesPending: Bool = false
+
     // MARK: - Private Properties
 
     private let offlineAPIService = OfflineAPIService.shared
     private let currentOperatorKey = "CapiCar_CurrentOperator"
+    private let staleDataThreshold: TimeInterval = 60.0 // Staff data considered stale after 1 minute
     
     // MARK: - Initialization
     
@@ -40,8 +47,13 @@ class StaffManager: ObservableObject {
 
         do {
             availableStaff = try await offlineAPIService.fetchAllStaff()
+            // Update smart loading states on successful load
+            hasLoadedInitialData = true
+            lastRefreshTime = Date()
+            dataChangesPending = false
             // Validate that current operator still exists in the updated staff list
             validateCurrentOperator()
+            print("👥 STAFF: Updated staff list and smart loading states")
         } catch {
             errorMessage = "Failed to load staff list. Please check your connection."
             print("Error fetching staff: \(error)")
@@ -49,7 +61,51 @@ class StaffManager: ObservableObject {
 
         isLoading = false
     }
-    
+
+    /// Smart refresh that only fetches when actually needed
+    func fetchAvailableStaffIfNeeded(force: Bool = false) async {
+        let shouldFetch = force || shouldRefreshStaffData()
+
+        if shouldFetch {
+            print("👥 SMART REFRESH: Staff refresh needed")
+            await fetchAvailableStaff()
+        } else {
+            print("👥 SMART REFRESH: Staff data is fresh, skipping refresh")
+        }
+    }
+
+    /// Check if staff data should be refreshed
+    private func shouldRefreshStaffData() -> Bool {
+        // Always refresh if we've never loaded data
+        guard hasLoadedInitialData else {
+            print("👥 REFRESH CHECK: Initial staff load needed")
+            return true
+        }
+
+        // Check if data is stale
+        if let lastRefresh = lastRefreshTime {
+            let timeSinceRefresh = Date().timeIntervalSince(lastRefresh)
+            if timeSinceRefresh > staleDataThreshold {
+                print("👥 REFRESH CHECK: Staff data is stale (\(String(format: "%.1f", timeSinceRefresh))s old)")
+                return true
+            }
+        }
+
+        // Check if there are pending changes
+        if dataChangesPending {
+            print("👥 REFRESH CHECK: Staff changes pending")
+            return true
+        }
+
+        return false
+    }
+
+    /// Mark that staff changes are pending (e.g., after staff management operations)
+    func markDataChangesPending() {
+        dataChangesPending = true
+        print("👥 DATA CHANGES: Marked staff changes as pending")
+    }
+
     func checkInOperator(_ staff: StaffMember) async -> Bool {
         isLoading = true
         errorMessage = nil

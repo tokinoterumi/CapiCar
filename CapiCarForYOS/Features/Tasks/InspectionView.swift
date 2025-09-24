@@ -6,6 +6,9 @@ struct InspectionView: View {
     @StateObject private var viewModel: InspectionViewModel
     @Environment(\.dismiss) private var dismiss
 
+    // State for issue reporting
+    @State private var showingReportIssueView = false
+
     init(task: FulfillmentTask, currentOperator: StaffMember?) {
         _viewModel = StateObject(wrappedValue: InspectionViewModel(task: task, currentOperator: currentOperator))
     }
@@ -29,6 +32,19 @@ struct InspectionView: View {
             .navigationTitle("Quality Inspection")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                // Report Issue button (leading)
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: { showingReportIssueView = true }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle")
+                            Text("Report")
+                        }
+                        .foregroundColor(.orange)
+                    }
+                    .disabled(viewModel.isLoading)
+                }
+
+                // Pause button (trailing)
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         Task {
@@ -44,7 +60,6 @@ struct InspectionView: View {
                     .disabled(viewModel.isLoading)
                 }
             }
-            .background(Color(.systemGroupedBackground))
         }
         .overlay {
             if viewModel.isLoading {
@@ -60,6 +75,13 @@ struct InspectionView: View {
         } message: {
             Text(viewModel.errorMessage ?? "")
         }
+        // Report issue view sheet
+        .sheet(isPresented: $showingReportIssueView) {
+            ReportIssueView(
+                task: viewModel.task,
+                currentOperator: viewModel.currentOperator
+            )
+        }
     }
     
     // MARK: - Subviews
@@ -68,12 +90,12 @@ struct InspectionView: View {
         VStack(alignment: .leading, spacing: 16) {
             // Task info card
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
+                VStack(spacing: 12) {
                     Image(systemName: "magnifyingglass.circle.fill")
-                        .font(.title)
+                        .font(.system(size: 50))
                         .foregroundColor(.blue)
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(spacing: 4) {
                         Text(viewModel.task.orderName)
                             .font(.title2)
                             .fontWeight(.bold)
@@ -82,9 +104,8 @@ struct InspectionView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
-
-                    Spacer()
                 }
+                .frame(maxWidth: .infinity)
 
                 // Inspector info
                 if let inspector = viewModel.currentOperator {
@@ -99,11 +120,9 @@ struct InspectionView: View {
                     .padding(.vertical, 6)
                     .background(Color.blue.opacity(0.1))
                     .cornerRadius(16)
+                    .frame(maxWidth: .infinity)
                 }
             }
-            .padding()
-            .background(Color(.secondarySystemGroupedBackground))
-            .cornerRadius(12)
         }
     }
     
@@ -121,8 +140,6 @@ struct InspectionView: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
-        .cornerRadius(12)
     }
     
     private var inspectionCriteriaSection: some View {
@@ -144,8 +161,6 @@ struct InspectionView: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
-        .cornerRadius(12)
     }
     
     private var inspectionActionsFooter: some View {
@@ -162,10 +177,9 @@ struct InspectionView: View {
                     }
                 } else {
                     HStack {
-                        Image(systemName: "clock.circle")
-                            .foregroundColor(.orange)
                         Text("\(viewModel.remainingCriteriaCount) criteria remaining")
-                            .font(.caption)
+                            .padding()
+                            .font(.footnote)
                             .foregroundColor(.orange)
                     }
                 }
@@ -175,13 +189,12 @@ struct InspectionView: View {
             .padding(.horizontal)
             .padding(.top, 12)
             .padding(.bottom, 8)
-            .background(Color(.systemGroupedBackground))
 
             // Action buttons
-            HStack(spacing: 16) {
+            HStack(spacing: 36) {
                 // Fail Inspection Button
                 PrimaryButton(
-                    title: "Fail Inspection",
+                    title: "Fail",
                     color: .red,
                     isLoading: viewModel.isLoading && viewModel.pendingAction == .fail,
                     isDisabled: !viewModel.canFailInspection,
@@ -196,7 +209,7 @@ struct InspectionView: View {
 
                 // Pass Inspection Button
                 PrimaryButton(
-                    title: "Pass Inspection",
+                    title: "Pass",
                     color: .green,
                     isLoading: viewModel.isLoading && viewModel.pendingAction == .pass,
                     isDisabled: !viewModel.canPassInspection

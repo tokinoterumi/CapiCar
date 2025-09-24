@@ -83,7 +83,9 @@ struct StaffManagementView: View {
             .navigationTitle("Staff Management")
             .navigationBarTitleDisplayMode(.automatic)
             .onAppear {
-                loadAllStaff()
+                Task {
+                    await staffManager.fetchAvailableStaffIfNeeded()
+                }
             }
             .alert("Error", isPresented: .constant(errorMessage != nil)) {
                 Button("OK") {
@@ -180,6 +182,8 @@ struct StaffManagementView: View {
             print("✅ API returned new staff: \(newStaff.name) (ID: \(newStaff.id))")
 
             print("🔄 Refreshing staff list...")
+            // Mark that staff data has changed and refresh
+            staffManager.markDataChangesPending()
             await staffManager.fetchAvailableStaff()
             print("✅ Staff list refreshed")
 
@@ -209,6 +213,8 @@ struct StaffManagementView: View {
             print("✅ API returned updated staff: \(updatedStaff.name) (ID: \(updatedStaff.id))")
 
             print("🔄 Refreshing staff list after update...")
+            // Mark that staff data has changed and refresh
+            staffManager.markDataChangesPending()
             await staffManager.fetchAvailableStaff()
             print("✅ Staff list refreshed after update")
 
@@ -242,6 +248,8 @@ struct StaffManagementView: View {
             print("✅ API delete call completed successfully")
 
             print("🔄 Refreshing staff list after deletion...")
+            // Mark that staff data has changed and refresh
+            staffManager.markDataChangesPending()
             await staffManager.fetchAvailableStaff()
             print("✅ Staff list refreshed after deletion")
 

@@ -14,6 +14,10 @@ class TaskDetailViewModel: ObservableObject {
     // State for data entry when completing picking
     @Published var weightInput: String = ""
     @Published var dimensionsInput: String = ""
+
+    // Dimension dropdown options
+    let dimensionOptions = [60, 80, 100, 120, 140, 160, 180, 200]
+    @Published var selectedDimension: Int = 60
     
     // State for correction flow
     @Published var correctionErrorType: String = ""
@@ -141,6 +145,10 @@ class TaskDetailViewModel: ObservableObject {
                 task.status = .picking
             }
             // If all items completed, stay in picked
+        } else if task.status == .correcting {
+            // Correcting tasks should stay in correcting status regardless of checklist completion
+            // The checklist completion affects UI state but not the correcting status itself
+            print("DEBUG: Status is correcting - maintaining correcting status")
         }
 
         print("DEBUG: Final status: \(task.status)")
@@ -178,13 +186,13 @@ class TaskDetailViewModel: ObservableObject {
             // Can only start packing if all items are picked
             return canStartPacking
         case .picked:
-            // Can start packing if weight/dimensions entered
-            return !weightInput.isEmpty && !dimensionsInput.isEmpty
+            // Can start packing if weight entered (dimensions selected from dropdown)
+            return !weightInput.isEmpty
         case .inspecting, .inspected:
             return canCompleteInspection // Can complete inspection only when criteria are met
         case .correcting:
-            // For correction workflow, require weight/dimensions like in picked status
-            return !weightInput.isEmpty && !dimensionsInput.isEmpty
+            // For correction workflow, require weight (dimensions selected from dropdown)
+            return !weightInput.isEmpty
         case .pending, .packed, .correctionNeeded, .completed, .cancelled:
             return false
         }
@@ -268,14 +276,14 @@ class TaskDetailViewModel: ObservableObject {
     
     /// Start packing with weight and dimensions
     func startPacking() async {
-        guard !weightInput.isEmpty && !dimensionsInput.isEmpty else {
-            errorMessage = "Please enter weight and dimensions before starting packing."
+        guard !weightInput.isEmpty else {
+            errorMessage = "Please enter weight before starting packing."
             return
         }
-        
+
         let payload = [
             "weight": weightInput,
-            "dimensions": dimensionsInput
+            "dimensions": String(selectedDimension)
         ]
         await performTaskAction(.startPacking, payload: payload)
     }

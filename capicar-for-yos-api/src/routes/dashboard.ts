@@ -7,20 +7,8 @@ const router = express.Router();
 // Returns dashboard data in the format the Swift client's `DashboardData` model expects.
 router.get('/', async (req, res) => {
     try {
-        // Check for conditional requests (If-None-Match header)
-        const clientETag = req.get('If-None-Match');
-
-        // 1. Fetch the actual tasks from the database with optimized caching
-        const { grouped: granularGroupedTasks, lastModified, etag } = await airtableService.getTasksGroupedByStatusOptimized();
-
-        // If client has current data, return 304 Not Modified
-        if (clientETag && clientETag === etag) {
-            console.log('📦 HTTP CACHE HIT: Client has current data, returning 304');
-            res.status(304).end();
-            return;
-        }
-
-        console.log('🔄 HTTP CACHE MISS: Generating fresh response');
+        // 1. Always fetch fresh data - no ETag caching complexity
+        const { grouped: granularGroupedTasks, lastModified } = await airtableService.getTasksGroupedByStatusOptimized();
 
         // 2. Transform granular groups into simplified user-friendly groups
         const simplifiedGroupedTasks = {
@@ -59,10 +47,10 @@ router.get('/', async (req, res) => {
             lastUpdated: lastModified
         };
 
-        // Set caching headers
-        res.setHeader('ETag', etag);
-        res.setHeader('Last-Modified', new Date(lastModified).toUTCString());
-        res.setHeader('Cache-Control', 'private, must-revalidate, max-age=0');
+        // Set no-cache headers for reliable fresh data
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
 
         // Add conflict resolution headers for debugging
         res.setHeader('X-Server-Timestamp', new Date().toISOString());
