@@ -71,6 +71,12 @@ export class AirtableService {
 
     async updateTaskStatus(taskId: string, status: TaskStatus, operatorId?: string): Promise<FulfillmentTask | null> {
         try {
+            // Get current task status for audit logging
+            const currentTask = await this.getTaskById(taskId);
+            if (!currentTask) {
+                return null;
+            }
+
             const updateFields: any = {
                 status: status,
                 updated_at: new Date().toISOString()
@@ -109,9 +115,9 @@ export class AirtableService {
                     operatorId,
                     actionType,
                     updateFields,
-                    undefined, // oldValue will be determined by the action context
+                    currentTask.status, // oldValue = current status before update
                     status,
-                    `Status updated to ${status}`
+                    `Status updated from ${currentTask.status} to ${status}`
                 );
                 return result.task;
             } else {
@@ -528,11 +534,8 @@ export class AirtableService {
             'ENTER_CORRECTION': 'Inspection_Failed',
             'START_CORRECTION': 'Correction_Started',
             'RESOLVE_CORRECTION': 'Correction_Completed',
-            'UPDATE_CHECKLIST': 'Field_Updated',
             'REPORT_EXCEPTION': 'Exception_Logged',
             'REPORT_ISSUE': 'Exception_Logged',
-            'CHECK_IN': 'Field_Updated',
-            'CHECK_OUT': 'Field_Updated',
             'PAUSE_TASK': 'Task_Paused',
             'RESUME_TASK': 'Task_Resumed',
             'CANCEL_TASK': 'Task_Auto_Cancelled'

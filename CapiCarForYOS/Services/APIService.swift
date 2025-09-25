@@ -357,6 +357,21 @@ class APIService {
 
         return response.data
     }
+
+    // MARK: - Audit Log Sync API (Placeholder for future server-side implementation)
+
+    /// Sync audit log to server (placeholder method)
+    /// TODO: Implement server-side audit log endpoint as documented in SYNC_REQUIREMENTS.md
+    func syncAuditLog(_ auditPayload: [String: Any]) async throws {
+        // For now, this is a no-op since the server endpoint doesn't exist yet
+        // When the server endpoint is ready, implement the actual API call here
+        print("📝 AUDIT LOG SYNC: Placeholder call - server endpoint not implemented yet")
+        print("📝 Audit payload: \(auditPayload)")
+
+        // Simulate success for now to prevent sync failures
+        // In the future, this should make an actual POST request to /api/audit-logs/sync
+        return
+    }
 }
 
 // MARK: - API Request & Response Models

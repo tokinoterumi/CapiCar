@@ -56,7 +56,7 @@ struct TaskDetailView: View {
             footerActionView
         }
         .overlay(alignment: .bottomLeading) {
-            // Floating barcode scan button
+            // Floating barcode scan button - only show during picking (not picked)
             if viewModel.task.status == .picking || viewModel.task.status == .pending {
                 floatingBarcodeScanButton
             }
@@ -122,7 +122,11 @@ struct TaskDetailView: View {
         .sheet(isPresented: $showingReportIssueView) {
             ReportIssueView(
                 task: viewModel.task,
-                currentOperator: viewModel.currentOperator
+                currentOperator: viewModel.currentOperator,
+                onIssueReported: {
+                    // Dismiss TaskDetailView to return to dashboard
+                    dismiss()
+                }
             )
         }
     }
@@ -206,7 +210,7 @@ struct TaskDetailView: View {
     
     private var footerActionView: some View {
         VStack(spacing: 16) {
-            // Conditionally show input fields when picked and ready for packing, or when correcting
+            // Show input fields when picked or correcting (not during picking)
             if viewModel.task.status == .picked || viewModel.task.status == .correcting {
                 VStack(spacing: 16) {
                     // Weight input field
@@ -302,7 +306,7 @@ struct TaskDetailView: View {
             if !viewModel.primaryActionText.isEmpty {
                 PrimaryButton(
                     title: viewModel.primaryActionText,
-                    isLoading: viewModel.isLoading,
+                    isLoading: false, // Keep button static, no loading state
                     isDisabled: !viewModel.canPerformPrimaryAction,
                     action: {
                         Task {

@@ -27,53 +27,68 @@ class OfflineAPIService {
     // MARK: - Dashboard API (Offline-First)
     
     func fetchDashboardData() async throws -> DashboardData {
-        // Always fetch fresh data when online to avoid stale cache issues
+        // Always try to fetch fresh data first, with real-time connectivity check
         print("🔥 CONNECTIVITY: syncManager.isOnline = \(syncManager.isOnline)")
-        if syncManager.isOnline {
-            do {
 
-                let freshData = try await apiService.fetchDashboardData()
-                print("🔥 DASHBOARD: Successfully fetched fresh data from API")
-                print("🔥 DASHBOARD: Pending tasks: \(freshData.tasks.pending.count)")
-                print("🔥 DASHBOARD: Picking tasks: \(freshData.tasks.picking.count)")
-                print("🔥 DASHBOARD: Packed tasks: \(freshData.tasks.packed.count)")
-                print("🔥 DASHBOARD: Inspecting tasks: \(freshData.tasks.inspecting.count)")
-                print("🔥 DASHBOARD: Completed tasks: \(freshData.tasks.completed.count)")
-                print("🔥 DASHBOARD: Paused tasks: \(freshData.tasks.paused.count)")
-                print("🔥 DASHBOARD: Total tasks in response: \(freshData.stats.total)")
+        // Try to fetch fresh data even if syncManager.isOnline is false - the API call itself will determine connectivity
+        do {
+            let freshData = try await apiService.fetchDashboardData()
+            print("🔥 DASHBOARD: ✅ Successfully fetched fresh data from API")
+            print("🔥 DASHBOARD: Pending tasks: \(freshData.tasks.pending.count)")
+            print("🔥 DASHBOARD: Picking tasks: \(freshData.tasks.picking.count)")
+            print("🔥 DASHBOARD: Packed tasks: \(freshData.tasks.packed.count)")
+            print("🔥 DASHBOARD: Inspecting tasks: \(freshData.tasks.inspecting.count)")
+            print("🔥 DASHBOARD: Completed tasks: \(freshData.tasks.completed.count)")
+            print("🔥 DASHBOARD: Paused tasks: \(freshData.tasks.paused.count)")
+            print("🔥 DASHBOARD: Total tasks in response: \(freshData.stats.total)")
 
-                // Save fresh tasks to local database for future offline access
-                let allTasks = [
-                    freshData.tasks.pending,
-                    freshData.tasks.picking,
-                    freshData.tasks.packed,
-                    freshData.tasks.inspecting,
-                    freshData.tasks.completed,
-                    freshData.tasks.paused,
-                    freshData.tasks.cancelled
-                ].flatMap { $0 }
+            // Save fresh tasks to local database for future offline access
+            let allTasks = [
+                freshData.tasks.pending,
+                freshData.tasks.picking,
+                freshData.tasks.packed,
+                freshData.tasks.inspecting,
+                freshData.tasks.completed,
+                freshData.tasks.paused,
+                freshData.tasks.cancelled
+            ].flatMap { $0 }
 
-                print("🔥 DASHBOARD: Total tasks to merge with local DB: \(allTasks.count)")
-                print("🔥 LATEST-DATA WINS: Starting conflict resolution for \(allTasks.count) tasks")
+            print("🔥 DASHBOARD: Total tasks to merge with local DB: \(allTasks.count)")
+            print("🔥 LATEST-DATA WINS: Starting conflict resolution for \(allTasks.count) tasks")
 
-                // Log sequence numbers for debugging
-                for task in allTasks.prefix(3) { // Log first 3 tasks for debugging
-                    print("🔍 SERVER TASK: \(task.id) sequence=\(task.operationSequence ?? 0) status=\(task.status)")
-                }
-
-                try databaseManager.saveTasks(allTasks)
-                print("🔥 LATEST-DATA WINS: Successfully completed conflict resolution merge")
-
-                return freshData
-            } catch {
-                print("Failed to fetch fresh data, falling back to local cache: \(error)")
-                // Fall through to use local cache if API fails
+            // Log sequence numbers and statuses for debugging
+            print("🔍 SERVER STATUS DEBUG:")
+            for task in allTasks {
+                print("🔍 SERVER TASK: \(task.id) sequence=\(task.operationSequence ?? 0) status=\(task.status)")
             }
+
+            try databaseManager.saveTasks(allTasks)
+            print("🔥 LATEST-DATA WINS: Successfully completed conflict resolution merge")
+
+            // Update SyncManager's online status since we successfully connected
+            if !syncManager.isOnline {
+                print("🔥 CONNECTIVITY: API call succeeded, updating network status to online")
+            }
+
+            return freshData
+        } catch {
+            print("🔥 DASHBOARD: ❌ Failed to fetch fresh data, falling back to local cache: \(error)")
+            // Update SyncManager's online status since API failed
+            if syncManager.isOnline {
+                print("🔥 CONNECTIVITY: API call failed, we might be offline")
+            }
+            // Fall through to use local cache if API fails
         }
 
         // Use local cache only when offline or when API fails
         let localTasks = try databaseManager.fetchAllTasks()
         print("🔥 DASHBOARD: Using local cache - found \(localTasks.count) local tasks")
+
+        // DEBUG: Log actual task statuses in local database
+        print("🔍 LOCAL DB STATUS DEBUG:")
+        for task in localTasks {
+            print("🔍 LOCAL TASK: \(task.id) status=\(task.status) isPaused=\(task.isPaused ?? false)")
+        }
 
         // Convert local tasks to simplified grouped format (matching backend transformation)
         let pendingTasks = localTasks.filter { $0.status == TaskStatus.pending && $0.isPaused != true }
@@ -145,8 +160,16 @@ class OfflineAPIService {
                 print("🔍 OfflineAPIService: Fresh task fetched and saved - status: \(freshTask.status)")
                 return freshTask
             } catch {
-                print("🔍 OfflineAPIService: API fetch failed, falling back to local: \(error)")
-                // Fall back to local data if API fails
+                print("🔍 OfflineAPIService: API fetch failed: \(error)")
+
+                // Only fall back to local data for network issues, not for "task not found"
+                if case APIError.serverError(let message) = error, message.contains("not found") {
+                    print("🔍 OfflineAPIService: Task not found on server - not falling back to stale local data")
+                    throw error // Re-throw the "not found" error instead of using stale data
+                }
+
+                print("🔍 OfflineAPIService: Network error, falling back to local data")
+                // Fall back to local data for network/connectivity issues
             }
         }
 
@@ -224,7 +247,10 @@ class OfflineAPIService {
         }
         
         var task = localTask.asFulfillmentTask
-        
+
+        // Capture original status before any changes
+        let originalStatus = task.status.rawValue
+
         // Apply optimistic updates based on action
         switch action {
         case .startPicking:
@@ -269,14 +295,35 @@ class OfflineAPIService {
             task.status = TaskStatus.cancelled
         }
         
+        // Get the local task to record the operation BEFORE making changes
+        guard let localTask = try databaseManager.fetchLocalTask(id: taskId) else {
+            throw APIError.serverError(message: "Local task not found")
+        }
+
+        // Use original status captured before changes
+        let oldStatus = originalStatus
+
         // Update current operator
         if let staffMember = try? databaseManager.fetchLocalStaff(id: operatorId) {
             task.currentOperator = staffMember.asStaffMember
         }
-        
+
+        // Record the pending operation on the local task with proper old/new values
+        let payloadString = payload != nil ? (try? String(data: JSONSerialization.data(withJSONObject: payload!), encoding: .utf8)) : nil
+        let operation = localTask.performLocalOperation(
+            actionType: action.rawValue,
+            details: "Offline action: \(action.rawValue)",
+            payload: payloadString,
+            oldValue: oldStatus,
+            newValue: task.status.rawValue
+        )
+
+        print("🔄 OFFLINE: Recorded operation \(action.rawValue) (sequence: \(operation.localSequence)) for task \(taskId)")
+        print("📊 OFFLINE: Status change: \(oldStatus) → \(task.status.rawValue)")
+
         // Save optimistic update
         try databaseManager.updateTaskWithSequenceResolution(task)
-        
+
         // Queue the action for sync
         try await syncManager.performTaskActionOffline(
             taskId: taskId,

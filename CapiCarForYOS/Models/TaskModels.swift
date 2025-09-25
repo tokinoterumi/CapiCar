@@ -25,6 +25,7 @@ struct FulfillmentTask: Identifiable, Codable, Equatable, Hashable {
     var inExceptionPool: Bool?
     var exceptionReason: String?
     var exceptionLoggedAt: String?
+    var exceptionNotes: String?
 
     // Conflict resolution fields
     var lastModifiedAt: String? // Server-side last modification timestamp

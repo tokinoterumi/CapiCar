@@ -89,16 +89,7 @@ router.post('/checkin', async (req, res) => {
 
         switch (action) {
             case 'CHECK_IN':
-                // Log check-in action
-                await airtableService.logAction(
-                    staffId,
-                    '', // No specific task for check-in
-                    'CHECK_IN',
-                    '',
-                    '',
-                    'Operator checked in for shift'
-                );
-
+                // Check-in logging removed - attendance tracking is not task workflow
                 res.json({
                     success: true,
                     data: {
@@ -111,16 +102,7 @@ router.post('/checkin', async (req, res) => {
                 break;
 
             case 'CHECK_OUT':
-                // Log check-out action
-                await airtableService.logAction(
-                    staffId,
-                    '', // No specific task for check-out
-                    'CHECK_OUT',
-                    '',
-                    '',
-                    'Operator checked out from shift'
-                );
-
+                // Check-out logging removed - attendance tracking is not task workflow
                 res.json({
                     success: true,
                     data: {

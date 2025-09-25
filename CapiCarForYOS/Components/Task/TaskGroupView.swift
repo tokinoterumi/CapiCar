@@ -16,18 +16,19 @@ struct TaskGroupView: View {
         }
 
         // Get unique statuses in this group and their colors
+        // Note: .picked and .inspected are intermediate states that should not appear in UI
         let uniqueStatuses = Set(tasks.map { $0.status })
         let colors = uniqueStatuses.compactMap { status -> Color? in
             switch status {
             case .pending: return .orange
             case .picking: return .blue
-            case .picked: return Color(.systemIndigo)
             case .packed: return Color(.systemIndigo)
-            case .inspecting, .inspected: return .teal
+            case .inspecting: return .teal
             case .correctionNeeded: return .red
             case .correcting: return .pink
             case .completed: return .green
             case .cancelled: return .gray
+            case .picked, .inspected: return nil // These are intermediate states, don't display
             }
         }
 

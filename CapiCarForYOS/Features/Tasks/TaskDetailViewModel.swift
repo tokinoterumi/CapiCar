@@ -52,9 +52,15 @@ class TaskDetailViewModel: ObservableObject {
 
         // Auto-start picking when user enters TaskDetailView from pending state
         if task.status == .pending {
+            print("DEBUG: Task is pending - initiating automatic picking transition")
+
             Task {
+                print("DEBUG: Starting automatic picking action...")
                 await startPicking()
+                print("DEBUG: Automatic picking action completed, status: \(self.task.status)")
             }
+        } else {
+            print("DEBUG: Task status is \(task.status) - no automatic transition needed")
         }
     }
     
@@ -127,6 +133,7 @@ class TaskDetailViewModel: ObservableObject {
         canStartPacking = allItemsCompleted
 
         print("DEBUG: updateCanStartPacking - allItemsCompleted: \(allItemsCompleted), current status: \(task.status)")
+        print("DEBUG: UI State - canStartPacking: \(canStartPacking), primaryActionText: '\(primaryActionText)', canPerformPrimaryAction: \(canPerformPrimaryAction)")
 
         // Handle state transitions based on checklist completion
         if task.status == .pending {
@@ -135,14 +142,20 @@ class TaskDetailViewModel: ObservableObject {
             print("DEBUG: Status is pending - should have transitioned to picking in init()")
         } else if task.status == .picking {
             if allItemsCompleted {
-                print("DEBUG: Transitioning from picking to picked")
-                task.status = .picked
+                print("DEBUG: All items completed - completing picking")
+                Task {
+                    await completePicking()
+                    print("DEBUG: completePicking() action completed, status: \(self.task.status)")
+                }
             }
             // If not all items completed, stay in picking
         } else if task.status == .picked {
             if !allItemsCompleted {
-                print("DEBUG: Transitioning from picked back to picking")
-                task.status = .picking
+                print("DEBUG: Items uncompleted - reverting from picked to picking")
+                Task {
+                    await startPicking() // Revert to picking when items become incomplete
+                    print("DEBUG: Reverted to picking status: \(self.task.status)")
+                }
             }
             // If all items completed, stay in picked
         } else if task.status == .correcting {
@@ -164,8 +177,7 @@ class TaskDetailViewModel: ObservableObject {
         }
 
         switch task.status {
-        case .picking: return "" // No button when picking
-        case .picked: return "Packing Completed"
+        case .picking, .picked: return "Packing Completed"
         case .inspecting: return "Complete Inspection"
         case .correcting: return "Complete Correction"
         default: return ""
@@ -183,11 +195,11 @@ class TaskDetailViewModel: ObservableObject {
 
         switch task.status {
         case .picking:
-            // Can only start packing if all items are picked
+            // During picking: button enabled only when all items are completed (no weight required yet)
             return canStartPacking
         case .picked:
-            // Can start packing if weight entered (dimensions selected from dropdown)
-            return !weightInput.isEmpty
+            // During picked: button enabled when all items completed AND weight entered
+            return canStartPacking && !weightInput.isEmpty
         case .inspecting, .inspected:
             return canCompleteInspection // Can complete inspection only when criteria are met
         case .correcting:
@@ -247,8 +259,7 @@ class TaskDetailViewModel: ObservableObject {
 
         switch task.status {
         case .picking:
-            // This shouldn't happen since picking auto-completes when all items are done
-            // But handle it gracefully
+            // If all items are completed and weight is entered, complete picking then start packing
             await completePicking()
             await startPacking()
         case .picked:
@@ -266,7 +277,9 @@ class TaskDetailViewModel: ObservableObject {
     
     /// Start picking process
     func startPicking() async {
+        print("DEBUG: startPicking() called")
         await performTaskAction(.startPicking)
+        print("DEBUG: startPicking() completed, status is now: \(task.status)")
     }
     
     /// Complete picking (just finish picking items)
@@ -374,14 +387,18 @@ class TaskDetailViewModel: ObservableObject {
     // MARK: - Private Helper Methods
     
     private func performTaskAction(_ action: TaskAction, payload: [String: String]? = nil) async {
+        print("DEBUG: performTaskAction called with action: \(action)")
+
         guard let operatorId = currentOperator?.id else {
+            print("DEBUG: No current operator available")
             errorMessage = "No active operator. Please check in on the dashboard."
             return
         }
-        
+
+        print("DEBUG: Operator ID: \(operatorId), starting action...")
         isLoading = true
         errorMessage = nil
-        
+
         do {
             let updatedTask = try await offlineAPIService.performTaskAction(
                 taskId: task.id,
@@ -389,13 +406,14 @@ class TaskDetailViewModel: ObservableObject {
                 operatorId: operatorId,
                 payload: payload
             )
+            print("DEBUG: Action succeeded, updating task from \(task.status) to \(updatedTask.status)")
             self.task = updatedTask
         } catch {
             let isOnline = offlineAPIService.isOnline
-            self.errorMessage = isOnline 
+            self.errorMessage = isOnline
                 ? "Failed to perform task action. Please try again."
                 : "Action saved offline. Will sync when connection is restored."
-            print("Error performing task action: \(error)")
+            print("DEBUG: Error performing task action \(action): \(error)")
         }
         
         isLoading = false
@@ -492,19 +510,33 @@ class TaskDetailViewModel: ObservableObject {
                 checklist: checklistItems,
                 operatorId: operatorId
             )
-            // Update the task with the response, but keep our local checklist items
-            // since the user might still be interacting with them
-            self.task = updatedTask
+            // Update the task with the response, but preserve any status changes that might be in progress
+            // Only update if the returned status is more recent or different
+            let oldStatus = self.task.status
+            let newStatus = updatedTask.status
 
-            // Re-evaluate status after sync to ensure UI consistency
-            updateCanStartPacking()
+            // Update the task but preserve checklist items that user might still be interacting with
+            var mergedTask = updatedTask
+            // Keep our current checklist since user might still be modifying it
+            // The checklist sync is separate from task status changes
+
+            // Only update status if it's actually different and we're not in the middle of a status transition
+            if !isLoading && (newStatus != oldStatus) {
+                print("DEBUG: Updating task status from sync: \(oldStatus) → \(newStatus)")
+                self.task = mergedTask
+            } else if isLoading {
+                print("DEBUG: Skipping task update - action in progress")
+            } else {
+                print("DEBUG: Task status unchanged from sync: \(oldStatus)")
+            }
         } catch {
             print("Error syncing checklist: \(error)")
             // Don't show error to user for checklist sync - it's background operation
             // The offline service will handle queuing for later sync
 
-            // Even if sync fails, we should re-evaluate status for UI consistency
-            updateCanStartPacking()
+            // Don't re-evaluate status on sync failure to avoid race conditions
+            // The UI state should remain consistent with user actions
+            print("DEBUG: Checklist sync failed - keeping current UI state")
         }
     }
     

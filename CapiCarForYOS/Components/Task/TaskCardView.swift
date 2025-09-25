@@ -29,8 +29,7 @@ struct TaskCardView: View {
             // For paused tasks, get the base color from actual work status
             switch task.status {
             case .pending: baseColor = .orange
-            case .picking: baseColor = .blue
-            case .picked: baseColor = Color(.systemIndigo)
+            case .picking, .picked: baseColor = .blue
             case .packed: baseColor = Color(.systemIndigo)
             case .inspecting, .inspected: baseColor = .teal
             case .correctionNeeded: baseColor = .red
@@ -39,7 +38,7 @@ struct TaskCardView: View {
             case .cancelled: baseColor = .gray
             }
             case .picked:
-                baseColor = Color(.systemIndigo)
+                baseColor = .blue
             case .correctionNeeded:
                 baseColor = .red
             case .correcting:

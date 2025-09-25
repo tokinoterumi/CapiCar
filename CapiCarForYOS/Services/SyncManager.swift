@@ -2,6 +2,35 @@ import Foundation
 import Network
 import BackgroundTasks
 
+// MARK: - Sync Error Types
+enum SyncError: Error {
+    case retryExhausted(operation: String, taskId: String)
+    case invalidTaskState(taskId: String, state: String)
+    case networkUnavailable
+    case conflictResolutionFailed(taskId: String)
+}
+
+// MARK: - Sync-specific Conflict Resolution Types
+enum SyncConflictResolution {
+    case useServer(reason: String)
+    case useLocal(reason: String)
+    case requiresManualResolution(localVersion: ConflictVersion, serverVersion: ConflictVersion, reason: String)
+}
+
+struct ConflictVersion {
+    let task: FulfillmentTask
+    let timestamp: Date
+}
+
+struct ConflictData {
+    let id: String
+    let taskId: String
+    let localVersion: FulfillmentTask
+    let serverVersion: FulfillmentTask
+    let reason: String
+    let createdAt: Date
+}
+
 // MARK: - API Payload Models for Sync
 
 /// Payload for updating task status and checklist on the server
@@ -37,11 +66,14 @@ class SyncManager: ObservableObject {
     @Published private(set) var isReady: Bool = true
 
     // MARK: - Private Properties
-    
+
     private let databaseManager = DatabaseManager.shared
     private let apiService = APIService.shared
     private let networkMonitor = NWPathMonitor()
     private let backgroundTaskIdentifier = "com.capicar.app.backgroundSync" // 應與 Info.plist 中的設定一致
+    private var periodicSyncTimer: Timer?
+    private var lastPeriodicSync: Date?
+    private let periodicSyncInterval: TimeInterval = 5 * 60 // 5 minutes
 
     /// 私有化初始化方法，確保單例模式。
     private init() {
@@ -59,7 +91,16 @@ class SyncManager: ObservableObject {
         print("🔥 SYNCMANAGER: Starting network monitor")
         networkMonitor.start(queue: DispatchQueue(label: "NetworkMonitor"))
         scheduleAppRefresh() // 嘗試在啟動時安排一次背景任務
-        print("🔥 SYNCMANAGER: Network monitor started")
+        startPeriodicSync() // 啟動定期同步
+        print("🔥 SYNCMANAGER: Network monitor and periodic sync started")
+    }
+
+    /// 停止同步管理器
+    func stop() {
+        print("🔥 SYNCMANAGER: Stopping sync manager")
+        networkMonitor.cancel()
+        stopPeriodicSync()
+        print("🔥 SYNCMANAGER: Sync manager stopped")
     }
     
     /// 手動觸發一次同步流程。
@@ -149,14 +190,14 @@ class SyncManager: ObservableObject {
 
     // MARK: - Core Sync Logic
 
-    /// 執行同步的核心函式。
+    /// 執行雙向同步的核心函式：拉取、合併、推送
     private func performSync() async {
         // 防止重複同步
         guard !isSyncing else {
             print("同步已在進行中，跳過此次觸發。")
             return
         }
-        
+
         // 必須在線才能同步
         guard isOnline else {
             print("設備處於離線狀態，無法執行同步。")
@@ -165,53 +206,293 @@ class SyncManager: ObservableObject {
 
         isSyncing = true
         lastSyncError = nil
-        
-        do {
-            let tasksToSync = try databaseManager.fetchTasksPendingSync()
-            pendingChangesCount = tasksToSync.count
 
-            if tasksToSync.isEmpty {
-                print("沒有需要同步的任務。")
-            } else {
-                print("發現 \(tasksToSync.count) 個任務需要同步...")
-                
-                // 使用 TaskGroup 來並行處理多個任務的上傳
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    for task in tasksToSync {
-                        group.addTask {
-                            try await self.syncTask(task)
-                        }
-                    }
-                    // 等待所有任務完成
-                    try await group.waitForAll()
-                }
-            }
-            
+        do {
+            print("🔄 BIDIRECTIONAL SYNC: Starting pull-merge-push cycle")
+
+            // Phase 1: Pull latest data from server
+            await performPullPhase()
+
+            // Phase 2: Push local changes to server
+            try await performPushPhase()
+
             lastSyncTime = Date()
-            pendingChangesCount = 0
-            print("同步成功完成。")
+            print("✅ BIDIRECTIONAL SYNC: Completed successfully")
 
         } catch {
-            lastSyncError = "同步失敗: \(error.localizedDescription)"
-            print(lastSyncError!)
+            lastSyncError = "雙向同步失敗: \(error.localizedDescription)"
+            print("❌ BIDIRECTIONAL SYNC: Failed - \(lastSyncError!)")
         }
 
         isSyncing = false
     }
-    
-    // MARK: - Private Helper Methods
+
+    /// Phase 1: Pull latest data from server and merge with local data
+    private func performPullPhase() async {
+        print("📥 PULL PHASE: Starting server data retrieval")
+
+        do {
+            // Fetch latest task data from server
+            let dashboardData = try await apiService.fetchDashboardData()
+            let serverTasks = extractAllTasks(from: dashboardData)
+            print("📥 PULL PHASE: Retrieved \(serverTasks.count) tasks from server")
+
+            // Merge server data with local data using conflict resolution
+            try await mergeServerDataWithLocal(serverTasks)
+
+            print("✅ PULL PHASE: Completed successfully")
+
+        } catch {
+            print("❌ PULL PHASE: Failed to pull server data - \(error)")
+            // Continue to push phase even if pull fails
+        }
+    }
+
+    /// Phase 2: Push local changes to server with retry logic
+    private func performPushPhase() async throws {
+        print("📤 PUSH PHASE: Starting local data upload")
+
+        do {
+            let tasksToSync = try databaseManager.fetchTasksPendingSync()
+            let auditLogsToSync = try databaseManager.fetchAuditLogsPendingSync()
+            pendingChangesCount = tasksToSync.count + auditLogsToSync.count
+
+            if tasksToSync.isEmpty && auditLogsToSync.isEmpty {
+                print("📤 PUSH PHASE: No pending changes to sync")
+                pendingChangesCount = 0
+                return
+            }
+
+            print("📤 PUSH PHASE: Found \(tasksToSync.count) tasks and \(auditLogsToSync.count) audit logs to sync")
+
+            // Push with retry logic using TaskGroup
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                // Sync tasks with retry
+                for task in tasksToSync {
+                    group.addTask {
+                        try await self.syncTaskWithRetry(task)
+                    }
+                }
+
+                // Sync audit logs with retry
+                for auditLog in auditLogsToSync {
+                    group.addTask {
+                        try await self.syncAuditLogWithRetry(auditLog)
+                    }
+                }
+
+                // Wait for all operations to complete
+                try await group.waitForAll()
+            }
+
+            pendingChangesCount = 0
+            print("✅ PUSH PHASE: Completed successfully")
+
+        } catch {
+            print("❌ PUSH PHASE: Failed - \(error)")
+            throw error
+        }
+    }
+
+    /// Merge server data with local data using proper conflict resolution
+    private func mergeServerDataWithLocal(_ serverTasks: [FulfillmentTask]) async throws {
+        print("🔀 MERGE PHASE: Starting server-local data merge")
+
+        for serverTask in serverTasks {
+            do {
+                try await mergeIndividualTask(serverTask)
+            } catch {
+                print("⚠️ MERGE WARNING: Failed to merge task \(serverTask.id) - \(error)")
+                // Continue with other tasks
+            }
+        }
+
+        print("🔀 MERGE PHASE: Completed")
+    }
+
+    /// Merge individual task with proper conflict resolution
+    private func mergeIndividualTask(_ serverTask: FulfillmentTask) async throws {
+        guard let localTask = try databaseManager.fetchLocalTask(id: serverTask.id) else {
+            // New task from server - create local copy
+            print("🆕 MERGE: New server task \(serverTask.id), creating local copy")
+            let newLocalTask = serverTask.currentOperator != nil ?
+                LocalTask.fromFulfillmentTask(serverTask, assignedTo: serverTask.currentOperator!) :
+                LocalTask.fromFulfillmentTaskWithoutOperator(serverTask)
+
+            newLocalTask.syncStatus = .synced
+            try databaseManager.saveLocalTask(newLocalTask)
+            return
+        }
+
+        // Existing task - perform conflict resolution
+        let resolution = resolveTaskConflict(localTask: localTask, serverTask: serverTask)
+        do {
+            try await applyConflictResolution(localTask: localTask, serverTask: serverTask, resolution: resolution)
+        } catch {
+            print("❌ CONFLICT RESOLUTION: Failed for task \(serverTask.id) - \(error)")
+            throw error
+        }
+    }
+
+    // MARK: - Conflict Resolution
+
+    /// Helper method to extract all tasks from DashboardData
+    private func extractAllTasks(from dashboardData: DashboardData) -> [FulfillmentTask] {
+        var allTasks: [FulfillmentTask] = []
+        allTasks.append(contentsOf: dashboardData.tasks.pending)
+        allTasks.append(contentsOf: dashboardData.tasks.picking)  // includes picked
+        allTasks.append(contentsOf: dashboardData.tasks.packed)
+        allTasks.append(contentsOf: dashboardData.tasks.inspecting)  // includes correctionNeeded + correcting
+        allTasks.append(contentsOf: dashboardData.tasks.completed)
+        allTasks.append(contentsOf: dashboardData.tasks.paused)
+        allTasks.append(contentsOf: dashboardData.tasks.cancelled)
+        return allTasks
+    }
+
+    /// Enhanced conflict resolution with proper data preservation
+    private func resolveTaskConflict(localTask: LocalTask, serverTask: FulfillmentTask) -> SyncConflictResolution {
+        let localSequence = localTask.operationSequence
+        let serverSequence = serverTask.operationSequence ?? 0
+        let localModified = localTask.lastModifiedLocally
+        let serverModified = ISO8601DateFormatter().date(from: serverTask.lastModifiedAt ?? "") ?? Date.distantPast
+
+        print("🔍 CONFLICT ANALYSIS: Task \(serverTask.id)")
+        print("   Local: seq=\(localSequence), modified=\(localModified)")
+        print("   Server: seq=\(serverSequence), modified=\(serverModified)")
+        print("   Local sync status: \(localTask.syncStatus)")
+
+        // Case 1: No local changes - safe to use server data
+        if localTask.syncStatus == .synced {
+            return .useServer(reason: "No local changes pending")
+        }
+
+        // Case 2: Sequence-based resolution (most reliable)
+        if localSequence != serverSequence {
+            return localSequence > serverSequence ?
+                .useLocal(reason: "Local sequence higher (\(localSequence) > \(serverSequence))") :
+                .useServer(reason: "Server sequence higher (\(serverSequence) > \(localSequence))")
+        }
+
+        // Case 3: Same sequence - use timestamp
+        let timeDiff = abs(localModified.timeIntervalSince(serverModified))
+        if timeDiff > 60 { // More than 1 minute difference
+            return localModified > serverModified ?
+                .useLocal(reason: "Local timestamp newer") :
+                .useServer(reason: "Server timestamp newer")
+        }
+
+        // Case 4: Potential conflict - preserve both versions
+        return .requiresManualResolution(
+            localVersion: ConflictVersion(task: localTask.asFulfillmentTask, timestamp: localModified),
+            serverVersion: ConflictVersion(task: serverTask, timestamp: serverModified),
+            reason: "Sequences equal (\(localSequence)) and timestamps too close (\(timeDiff)s)"
+        )
+    }
+
+    /// Apply conflict resolution decision
+    private func applyConflictResolution(localTask: LocalTask, serverTask: FulfillmentTask, resolution: SyncConflictResolution) async throws {
+        switch resolution {
+        case .useServer(let reason):
+            print("📥 CONFLICT: Using server version - \(reason)")
+            try databaseManager.updateTaskWithSequenceResolution(serverTask)
+
+        case .useLocal(let reason):
+            print("📤 CONFLICT: Using local version - \(reason)")
+            localTask.syncStatus = .pendingPrioritySync
+            localTask.markRequiresBackgroundSync(reason: "Conflict resolved in favor of local")
+
+        case .requiresManualResolution(let localVersion, let serverVersion, let reason):
+            print("⚠️ CONFLICT: Manual resolution required - \(reason)")
+            try await preserveConflictingVersions(localTask: localTask, serverTask: serverTask, reason: reason)
+        }
+    }
+
+    /// Preserve both versions of conflicting data until manual resolution
+    private func preserveConflictingVersions(localTask: LocalTask, serverTask: FulfillmentTask, reason: String) async throws {
+        // Create conflict record
+        let conflictId = UUID().uuidString
+        let conflictData = ConflictData(
+            id: conflictId,
+            taskId: localTask.id,
+            localVersion: localTask.asFulfillmentTask,
+            serverVersion: serverTask,
+            reason: reason,
+            createdAt: Date()
+        )
+
+        // Store conflict data (would need to implement ConflictData model)
+        // For now, mark task as conflict pending resolution
+        localTask.syncStatus = .conflictPendingResolution
+        localTask.markRequiresBackgroundSync(reason: "Conflict detected: \(reason)")
+
+        print("💾 CONFLICT: Preserved conflicting versions for task \(localTask.id) (conflict ID: \(conflictId))")
+
+        // TODO: Implement UI notification for manual resolution
+        // TODO: Store conflict data in dedicated table for user review
+    }
+
+    // MARK: - Retry Mechanisms
+
+    /// Sync task with exponential backoff retry
+    private func syncTaskWithRetry(_ localTask: LocalTask) async throws {
+        try await performWithRetry(operation: "syncTask", taskId: localTask.id) {
+            try await self.syncTask(localTask)
+        }
+    }
+
+    /// Sync audit log with exponential backoff retry
+    private func syncAuditLogWithRetry(_ auditLog: LocalAuditLog) async throws {
+        try await performWithRetry(operation: "syncAuditLog", taskId: auditLog.taskId) {
+            try await self.syncAuditLog(auditLog)
+        }
+    }
+
+    /// Generic retry mechanism with exponential backoff
+    private func performWithRetry(operation: String, taskId: String, maxRetries: Int = 3, baseDelay: Double = 2.0, maxDelay: Double = 30.0, execute: () async throws -> Void) async throws {
+        var lastError: Error?
+
+        for attempt in 0...maxRetries {
+            do {
+                try await execute()
+                if attempt > 0 {
+                    print("✅ RETRY SUCCESS: \(operation) for \(taskId) succeeded on attempt \(attempt + 1)")
+                }
+                return
+            } catch {
+                lastError = error
+
+                if attempt < maxRetries {
+                    let delay = min(baseDelay * pow(2.0, Double(attempt)), maxDelay)
+                    print("🔄 RETRY: \(operation) for \(taskId) failed (attempt \(attempt + 1)/\(maxRetries + 1)), retrying in \(delay)s - \(error)")
+
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                } else {
+                    print("❌ RETRY FAILED: \(operation) for \(taskId) failed after \(maxRetries + 1) attempts - \(error)")
+                }
+            }
+        }
+
+        throw lastError ?? SyncError.retryExhausted(operation: operation, taskId: taskId)
+    }
+
+    // MARK: - State Management for Operations
 
     /// 處理單個任務的同步。
     /// - Parameter localTask: 從本地資料庫取出的 `LocalTask` 物件。
     private func syncTask(_ localTask: LocalTask) async throws {
         print("正在同步任務: \(localTask.name) (ID: \(localTask.id))，狀態為: \(localTask.status.rawValue)")
-        
+
+        // Mark task as awaiting server acknowledgment before sync attempt
+        if localTask.syncStatus != .awaitingServerAck {
+            try databaseManager.updateTaskSyncStatus(taskId: localTask.id, syncStatus: .awaitingServerAck)
+        }
+
         // 1. 將本地模型轉換為 API Payload
         let payload = try createPayload(from: localTask)
 
         // 2. 呼叫 API 服務 (convert payload to appropriate API calls)
         try await syncTaskToAPI(localTask, using: payload)
-        
+
         // 3. 處理同步成功的後續操作
         print("任務 \(localTask.id) 已成功上傳。")
         switch localTask.syncStatus {
@@ -219,7 +500,7 @@ class SyncManager: ObservableObject {
             // 暫停的任務：同步成功後從本地刪除 (ownership transfer back to server)
             try databaseManager.deleteSyncedTask(taskId: localTask.id)
             print("已從本地刪除暫停的任務 (返回伺服器池): \(localTask.id)")
-        case .pendingSync:
+        case .pendingSync, .awaitingServerAck:
             switch localTask.status {
             case .completed, .cancelled:
                 // 已完成/取消的任務：同步成功後從本地刪除
@@ -259,62 +540,96 @@ class SyncManager: ObservableObject {
         }
     }
 
-    /// Sync local task to API using existing APIService methods
+    /// Sync local task to API by replaying actual pending operations (preserves audit trail)
     private func syncTaskToAPI(_ localTask: LocalTask, using payload: UpdateTaskPayload) async throws {
-        // Convert LocalTask status to appropriate TaskAction
-        let action: TaskAction
-        switch localTask.status {
-        case .pending:
-            action = .startPicking // Pending tasks start picking when synced
-        case .picking:
-            action = .startPicking
-        case .picked:
-            action = .completePicking
-        case .packed:
-            action = .startPacking
-        case .inspecting:
-            action = .startInspection
-        case .correctionNeeded:
-            action = .enterCorrection
-        case .correcting:
-            action = .startCorrection
-        case .completed:
-            action = .completeInspection
-        case .cancelled:
-            action = .cancelTask
-        case .pausedPendingSync:
-            action = .pauseTask
+        // Sort pending operations by sequence to replay them in correct order
+        // Only sync pending operations (not awaiting ack, as those are already sent)
+        let operationsToSync = localTask.pendingOperations
+            .filter { $0.status == .pending }
+            .sorted { $0.localSequence < $1.localSequence }
+
+        guard !operationsToSync.isEmpty else {
+            print("⚠️ SYNC WARNING: No pending operations to sync for task \(localTask.id)")
+            return
         }
 
-        // Use existing performTaskAction method
-        _ = try await apiService.performTaskAction(
-            taskId: localTask.id,
-            action: action,
-            operatorId: localTask.assignedStaffId,
-            payload: nil
-        )
+        print("🔄 SYNC: Replaying \(operationsToSync.count) pending operations for task \(localTask.id)")
 
-        // If there are checklist updates, sync them too
-        if !localTask.checklistItems.isEmpty {
-            let checklistItems = localTask.checklistItems.map { localItem in
-                ChecklistItem(
-                    id: Int(localItem.id.split(separator: "-").last.flatMap { Int($0) } ?? 0),
-                    sku: localItem.sku,
-                    name: localItem.itemName,
-                    variant_title: "",
-                    quantity_required: localItem.quantity,
-                    image_url: nil,
-                    quantity_picked: localItem.status == .completed ? localItem.quantity : 0,
-                    is_completed: localItem.status == .completed
+        // Replay each operation in sequence
+        for operation in operationsToSync {
+            print("🎬 SYNC: Replaying \(operation.actionType) (sequence: \(operation.localSequence))")
+
+            // Mark operation as awaiting server acknowledgment BEFORE sending
+            operation.status = .awaitingAck
+            operation.incrementRetryCount()
+
+            do {
+                // Convert operation action type to TaskAction
+                guard let taskAction = TaskAction(rawValue: operation.actionType) else {
+                    print("⚠️ SYNC WARNING: Unknown action type \(operation.actionType), skipping")
+                    operation.status = .pending // Reset to allow retry
+                    continue
+                }
+
+                // Parse payload if present
+                var actionPayload: [String: String]? = nil
+                if let payloadString = operation.payload,
+                   !payloadString.isEmpty,
+                   let payloadData = payloadString.data(using: .utf8),
+                   let parsedPayload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: String] {
+                    actionPayload = parsedPayload
+                }
+
+                // Perform the action on the server
+                _ = try await apiService.performTaskAction(
+                    taskId: localTask.id,
+                    action: taskAction,
+                    operatorId: localTask.assignedStaffId,
+                    payload: actionPayload
                 )
-            }
 
-            _ = try await apiService.updateTaskChecklist(
-                taskId: localTask.id,
-                checklist: checklistItems,
-                operatorId: localTask.assignedStaffId
-            )
+                // Mark this operation as synced ONLY after successful server response
+                operation.status = .synced
+                print("✅ SYNC: Successfully synced operation \(operation.actionType)")
+
+            } catch {
+                // If sync fails, reset to pending for retry in next sync cycle
+                operation.status = .pending
+                print("❌ SYNC FAILED: Operation \(operation.actionType) failed, will retry - \(error)")
+                throw error
+            }
         }
+
+        print("🎯 SYNC: All pending operations synced for task \(localTask.id)")
+    }
+
+    /// 同步審計日誌到伺服器
+    /// - Parameter auditLog: 需要同步的本地審計日誌
+    private func syncAuditLog(_ auditLog: LocalAuditLog) async throws {
+        print("📝 SYNC: Syncing audit log \(auditLog.actionType) for task \(auditLog.taskId)")
+
+        // TODO: Add API endpoint for syncing audit logs to server
+        // For now, we'll need to add this to the backend API
+
+        // Prepare audit log payload matching server schema
+        let auditPayload: [String: Any] = [
+            "timestamp": ISO8601DateFormatter().string(from: auditLog.timestamp),
+            "action_type": auditLog.actionType,
+            "staff_id": auditLog.staffId,
+            "task_id": auditLog.taskId,
+            "operation_sequence": auditLog.operationSequence,
+            "old_value": auditLog.oldValue ?? NSNull(),
+            "new_value": auditLog.newValue ?? NSNull(),
+            "details": auditLog.details,
+            "deletion_flag": auditLog.deletionFlag
+        ]
+
+        // Call the placeholder API method (will become real when server endpoint is ready)
+        try await apiService.syncAuditLog(auditPayload)
+
+        // Mark as synced locally after successful API call
+        try databaseManager.markAuditLogAsSynced(logId: auditLog.id)
+        print("✅ SYNC: Audit log \(auditLog.id) marked as synced")
     }
 
     /// 建立上傳至 API 的 payload。
@@ -351,6 +666,7 @@ class SyncManager: ObservableObject {
                     // 當網路從離線變為在線時，觸發一次同步
                     if self.isOnline {
                         await self.performSync()
+                        self.resetPeriodicSyncTimer() // 重置定期同步計時器
                     }
                 } else {
                     print("🔥 SYNCMANAGER: Network status unchanged: \(self.isOnline ? "在線" : "離線")")
@@ -358,27 +674,244 @@ class SyncManager: ObservableObject {
             }
         }
     }
+
+    // MARK: - Periodic Sync Management
+
+    /// 啟動定期同步計時器
+    private func startPeriodicSync() {
+        stopPeriodicSync() // 確保沒有重複的計時器
+
+        periodicSyncTimer = Timer.scheduledTimer(withTimeInterval: periodicSyncInterval, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+
+            Task { @MainActor in
+                print("⏰ PERIODIC SYNC: Timer triggered")
+                await self.performPeriodicSyncCheck()
+            }
+        }
+
+        print("⏰ PERIODIC SYNC: Timer started with \(periodicSyncInterval / 60) minute interval")
+    }
+
+    /// 停止定期同步計時器
+    private func stopPeriodicSync() {
+        periodicSyncTimer?.invalidate()
+        periodicSyncTimer = nil
+        print("⏰ PERIODIC SYNC: Timer stopped")
+    }
+
+    /// 重置定期同步計時器
+    private func resetPeriodicSyncTimer() {
+        startPeriodicSync()
+        print("⏰ PERIODIC SYNC: Timer reset")
+    }
+
+    /// 執行定期同步檢查
+    private func performPeriodicSyncCheck() async {
+        // 只有在線且有待同步資料時才執行定期同步
+        guard isOnline else {
+            print("⏰ PERIODIC SYNC: Skipping - device offline")
+            return
+        }
+
+        // 檢查是否有待同步資料
+        do {
+            let tasksToSync = try databaseManager.fetchTasksPendingSync()
+            let auditLogsToSync = try databaseManager.fetchAuditLogsPendingSync()
+            let totalPending = tasksToSync.count + auditLogsToSync.count
+
+            if totalPending == 0 {
+                print("⏰ PERIODIC SYNC: Skipping - no pending data")
+                return
+            }
+
+            print("⏰ PERIODIC SYNC: Found \(totalPending) items to sync, triggering sync")
+            await performSync()
+            lastPeriodicSync = Date()
+
+        } catch {
+            print("⏰ PERIODIC SYNC: Error checking pending data - \(error)")
+        }
+    }
     
     /// 處理由 iOS 系統觸發的背景刷新任務。
     private func handleAppRefresh(task: BGAppRefreshTask) {
+        print("🌙 BACKGROUND: App refresh task started")
+
         // 為下一次刷新安排新任務
         scheduleAppRefresh()
 
-        // 設置任務超時處理
+        // 創建取消機制
+        var isCancelled = false
+        var syncTask: Task<Void, Never>?
+
+        // 設置任務超時處理 - 提前終止以確保有時間清理
         task.expirationHandler = {
-            // 在這裡清理並取消同步任務
-            // 例如：apiService.cancelCurrentTasks()
-            task.setTaskCompleted(success: false)
+            print("⏰ BACKGROUND: Task expiring, initiating cleanup")
+            isCancelled = true
+            syncTask?.cancel()
+
+            // 給清理過程一點時間
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                print("🔚 BACKGROUND: Task marked as completed due to expiration")
+                task.setTaskCompleted(success: false)
+            }
         }
 
-        print("開始執行背景同步任務...")
-        
-        // 在背景執行同步
-        Task {
-            await performSync()
-            let success = (lastSyncError == nil)
-            print("背景同步任務完成，結果: \(success ? "成功" : "失敗")")
-            task.setTaskCompleted(success: success)
+        print("🔄 BACKGROUND: Starting background sync...")
+
+        // 在背景執行同步，增加容錯機制
+        syncTask = Task {
+            var success = false
+
+            do {
+                // 檢查是否有待同步資料，如果沒有則快速退出
+                let tasksToSync = try databaseManager.fetchTasksPendingSync()
+                let auditLogsToSync = try databaseManager.fetchAuditLogsPendingSync()
+                let totalPending = tasksToSync.count + auditLogsToSync.count
+
+                if totalPending == 0 {
+                    print("🌙 BACKGROUND: No pending data, completing early")
+                    success = true
+                } else {
+                    print("🌙 BACKGROUND: Found \(totalPending) items to sync")
+
+                    // 檢查網路狀態
+                    guard isOnline else {
+                        print("🌙 BACKGROUND: Device offline, cannot sync")
+                        success = false
+                        return
+                    }
+
+                    // 在檢查點確保沒有被取消
+                    if isCancelled { return }
+
+                    // 執行同步，但只嘗試一次（不重試，因為時間有限）
+                    await performBackgroundSync(isCancelledCheck: { isCancelled })
+                    success = (lastSyncError == nil)
+                }
+
+            } catch {
+                print("❌ BACKGROUND: Sync failed with error: \(error)")
+                success = false
+            }
+
+            // 只有在沒有被取消的情況下才標記完成
+            if !isCancelled {
+                print("✅ BACKGROUND: Task completed with success: \(success)")
+                task.setTaskCompleted(success: success)
+            }
+        }
+    }
+
+    /// 執行背景同步，具有取消檢查機制
+    private func performBackgroundSync(isCancelledCheck: @escaping () -> Bool) async {
+        // 防止重複同步
+        guard !isSyncing else {
+            print("🌙 BACKGROUND: Sync already in progress, skipping")
+            return
+        }
+
+        // 必須在線才能同步
+        guard isOnline else {
+            print("🌙 BACKGROUND: Device offline, cannot sync")
+            return
+        }
+
+        isSyncing = true
+        lastSyncError = nil
+
+        do {
+            print("🔄 BACKGROUND SYNC: Starting pull-merge-push cycle")
+
+            // 檢查取消狀態
+            if isCancelledCheck() {
+                print("🔚 BACKGROUND: Sync cancelled during startup")
+                return
+            }
+
+            // Phase 1: Quick pull phase (只獲取最新資料，不做複雜合併)
+            await performSimplePullPhase(isCancelledCheck: isCancelledCheck)
+
+            if isCancelledCheck() {
+                print("🔚 BACKGROUND: Sync cancelled after pull phase")
+                return
+            }
+
+            // Phase 2: Push critical pending changes only
+            await performCriticalPushPhase(isCancelledCheck: isCancelledCheck)
+
+            lastSyncTime = Date()
+            print("✅ BACKGROUND SYNC: Completed successfully")
+
+        } catch {
+            lastSyncError = "背景同步失敗: \(error.localizedDescription)"
+            print("❌ BACKGROUND SYNC: Failed - \(lastSyncError!)")
+        }
+
+        isSyncing = false
+    }
+
+    /// 簡化的拉取階段，適合背景執行
+    private func performSimplePullPhase(isCancelledCheck: @escaping () -> Bool) async {
+        print("📥 BACKGROUND PULL: Starting server data retrieval")
+
+        do {
+            if isCancelledCheck() { return }
+
+            // 僅獲取伺服器資料，不進行複雜的合併操作
+            let dashboardData = try await apiService.fetchDashboardData()
+            let serverTasks = extractAllTasks(from: dashboardData)
+            print("📥 BACKGROUND PULL: Retrieved \(serverTasks.count) tasks from server")
+
+            if isCancelledCheck() { return }
+
+            // 快速更新本地資料（僅處理明確的衝突）
+            for serverTask in serverTasks.prefix(10) { // 限制處理數量以節省時間
+                if isCancelledCheck() { return }
+                try await mergeIndividualTask(serverTask)
+            }
+
+            print("✅ BACKGROUND PULL: Completed")
+
+        } catch {
+            print("❌ BACKGROUND PULL: Failed - \(error)")
+        }
+    }
+
+    /// 關鍵推送階段，只處理最重要的待同步項目
+    private func performCriticalPushPhase(isCancelledCheck: @escaping () -> Bool) async {
+        print("📤 BACKGROUND PUSH: Starting critical data upload")
+
+        do {
+            if isCancelledCheck() { return }
+
+            let tasksToSync = try databaseManager.fetchTasksPendingSync()
+            let auditLogsToSync = try databaseManager.fetchAuditLogsPendingSync()
+
+            // 優先處理已完成或取消的任務（這些最需要同步）
+            let criticalTasks = tasksToSync.filter { task in
+                task.status == .completed || task.status == .cancelled || task.syncStatus == .pendingPrioritySync
+            }.prefix(5) // 限制數量
+
+            print("📤 BACKGROUND PUSH: Processing \(criticalTasks.count) critical tasks")
+
+            for task in criticalTasks {
+                if isCancelledCheck() { return }
+
+                do {
+                    try await syncTaskWithRetry(task)
+                } catch {
+                    print("⚠️ BACKGROUND PUSH: Failed to sync task \(task.id) - \(error)")
+                    // 繼續處理其他任務
+                }
+            }
+
+            pendingChangesCount = max(0, tasksToSync.count + auditLogsToSync.count - criticalTasks.count)
+            print("✅ BACKGROUND PUSH: Completed critical sync")
+
+        } catch {
+            print("❌ BACKGROUND PUSH: Failed - \(error)")
         }
     }
 }

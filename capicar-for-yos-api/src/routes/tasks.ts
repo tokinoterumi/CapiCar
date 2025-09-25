@@ -280,17 +280,7 @@ router.put('/:id/checklist', async (req, res) => {
             });
         }
 
-        // Log checklist update
-        if (operator_id) {
-            await airtableService.logAction(
-                operator_id,
-                task_id,
-                'UPDATE_CHECKLIST',
-                '',
-                '',
-                'Updated task checklist'
-            );
-        }
+        // Checklist updates are too granular for audit log - removed to reduce noise
 
         res.json({
             success: true,

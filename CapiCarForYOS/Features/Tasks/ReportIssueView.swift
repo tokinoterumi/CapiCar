@@ -6,8 +6,12 @@ struct ReportIssueView: View {
     @StateObject private var viewModel: ReportIssueViewModel
     @Environment(\.dismiss) private var dismiss
 
-    init(task: FulfillmentTask, currentOperator: StaffMember?) {
+    // Callback to dismiss all task views and return to dashboard
+    let onIssueReported: (() -> Void)?
+
+    init(task: FulfillmentTask, currentOperator: StaffMember?, onIssueReported: (() -> Void)? = nil) {
         _viewModel = StateObject(wrappedValue: ReportIssueViewModel(task: task, currentOperator: currentOperator))
+        self.onIssueReported = onIssueReported
     }
 
     var body: some View {
@@ -51,6 +55,8 @@ struct ReportIssueView: View {
         .alert("Issue Reported", isPresented: $viewModel.showingSuccessAlert) {
             Button("OK") {
                 dismiss()
+                // Call the callback to dismiss all task views and return to dashboard
+                onIssueReported?()
             }
         } message: {
             Text("The issue has been reported successfully and logged for review.")

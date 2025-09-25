@@ -169,7 +169,9 @@ class DatabaseManager {
         let allTasksDescriptor = FetchDescriptor<LocalTask>()
         let allTasks = try mainContext.fetch(allTasksDescriptor)
         return allTasks.filter { task in
-            task.syncStatus == .pendingSync || task.syncStatus == .pausedPendingSync
+            task.syncStatus == .pendingSync ||
+            task.syncStatus == .pausedPendingSync ||
+            task.syncStatus == .awaitingServerAck
         }
     }
     
@@ -177,6 +179,38 @@ class DatabaseManager {
     func fetchAllLocalTasks() throws -> [LocalTask] {
         let descriptor = FetchDescriptor<LocalTask>()
         return try mainContext.fetch(descriptor)
+    }
+
+    // MARK: - Audit Log Management
+
+    /// 獲取所有需要同步的審計日誌
+    func fetchAuditLogsPendingSync() throws -> [LocalAuditLog] {
+        let descriptor = FetchDescriptor<LocalAuditLog>()
+        let allLogs = try mainContext.fetch(descriptor)
+        return allLogs.filter { log in
+            log.syncStatus == .pendingSync ||
+            log.syncStatus == .pendingPrioritySync ||
+            log.syncStatus == .awaitingServerAck
+        }
+    }
+
+    /// 標記審計日誌為已同步
+    func markAuditLogAsSynced(logId: String) throws {
+        let descriptor = FetchDescriptor<LocalAuditLog>(
+            predicate: #Predicate { $0.id == logId }
+        )
+        guard let auditLog = try mainContext.fetch(descriptor).first else {
+            throw DatabaseError.taskNotFound(logId)
+        }
+        auditLog.syncStatus = .synced
+        try mainContext.save()
+    }
+
+    /// 批量標記審計日誌為已同步
+    func markAuditLogsAsSynced(logIds: [String]) throws {
+        for logId in logIds {
+            try markAuditLogAsSynced(logId: logId)
+        }
     }
 
     // MARK: - Additional Methods for Offline-First Strategy
@@ -261,8 +295,23 @@ class DatabaseManager {
                 try mainContext.save()
 
             } else if serverSequence == localSequence {
-                // Same sequence - data is in sync
-                print("📊 LATEST-DATA WINS: Data already in sync for task \(taskId)")
+                // Same sequence - but still update with latest server data to ensure consistency
+                print("📊 LATEST-DATA WINS: Same sequence, updating with server data for task \(taskId)")
+
+                // Update all task fields with server data using correct LocalTask properties
+                existingLocalTask.name = serverTask.orderName
+                existingLocalTask.soNumber = serverTask.shippingName
+                existingLocalTask.status = LocalTaskStatus(from: serverTask.status)
+                existingLocalTask.isPaused = serverTask.isPaused ?? false
+                existingLocalTask.operationSequence = serverTask.operationSequence ?? 0
+                existingLocalTask.lastKnownServerSequence = serverSequence
+
+                // Update operator if present
+                if let serverOperator = serverTask.currentOperator {
+                    existingLocalTask.assignedStaffId = serverOperator.id
+                    existingLocalTask.assignedStaffName = serverOperator.name
+                }
+
                 existingLocalTask.syncStatus = .synced
                 try mainContext.save()
 
@@ -490,7 +539,8 @@ class DatabaseManager {
         if localTask.syncStatus != .pendingSync &&
            localTask.syncStatus != .pendingPrioritySync &&
            localTask.syncStatus != .conflictPendingResolution &&
-           localTask.syncStatus != .pendingSyncWithSequenceDrift {
+           localTask.syncStatus != .pendingSyncWithSequenceDrift &&
+           localTask.syncStatus != .awaitingServerAck {
             return ConflictResolution(
                 action: .useServer(reason: "No local changes pending"),
                 reason: "Local task syncStatus: \(localTask.syncStatus.rawValue)"

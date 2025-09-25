@@ -79,7 +79,11 @@ struct InspectionView: View {
         .sheet(isPresented: $showingReportIssueView) {
             ReportIssueView(
                 task: viewModel.task,
-                currentOperator: viewModel.currentOperator
+                currentOperator: viewModel.currentOperator,
+                onIssueReported: {
+                    // Dismiss InspectionView to return to dashboard
+                    dismiss()
+                }
             )
         }
     }

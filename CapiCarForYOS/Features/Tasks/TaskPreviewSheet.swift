@@ -143,8 +143,7 @@ struct TaskPreviewSheet: View {
 
         switch task.status {
         case .pending: baseColor = .orange
-        case .picking: baseColor = .blue
-        case .picked: baseColor = Color(.systemIndigo)
+        case .picking, .picked: baseColor = .blue
         case .packed: baseColor = Color(.systemIndigo)
         case .inspecting, .inspected: baseColor = .teal
         case .correctionNeeded: baseColor = .red
@@ -282,14 +281,14 @@ struct TaskPreviewSheet: View {
             HStack {
                 Image(systemName: "exclamationmark.circle.fill")
                     .foregroundColor(.red)
-                Text("⚠️ Exception Reported")
+                Text("Exception Reported")
                     .font(.headline)
                     .fontWeight(.semibold)
             }
 
             if let reason = task.exceptionReason, !reason.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Issue Type:")
+                    Text("Issue Type")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.secondary)
@@ -309,7 +308,7 @@ struct TaskPreviewSheet: View {
 
             if let loggedAt = task.exceptionLoggedAt, !loggedAt.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Reported:")
+                    Text("Reported")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.secondary)
@@ -317,6 +316,26 @@ struct TaskPreviewSheet: View {
                     Text(formatExceptionDate(loggedAt))
                         .font(.caption)
                         .foregroundColor(.secondary)
+                }
+            }
+
+            if let notes = task.exceptionNotes, !notes.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Description")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+
+                    Text(notes)
+                        .font(.body)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                        )
                 }
             }
 
@@ -329,10 +348,6 @@ struct TaskPreviewSheet: View {
         .padding()
         .background(Color.red.opacity(0.05))
         .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.red.opacity(0.3), lineWidth: 1.5)
-        )
     }
 
     private var correctionNotesSection: some View {
@@ -582,14 +597,47 @@ struct TaskPreviewSheet: View {
         print("🔍 FETCH DEBUG: Initial task status: \(initialTask.status.rawValue)")
         print("🔍 FETCH DEBUG: Current task status before fetch: \(currentTask.status.rawValue)")
 
+        // Check if we're transitioning from online to offline with fresh data
+        let isOnline = OfflineAPIService.shared.isOnline
+        print("🔍 FETCH DEBUG: Currently online: \(isOnline)")
+
+        // If we're offline and this TaskPreviewSheet was just created with fresh online data,
+        // use that data instead of fetching stale cached data
+        if !isOnline {
+            print("🔍 FETCH DEBUG: Device is offline - using existing task data to prevent stale override")
+            print("🔍 FETCH DEBUG: Current task already has status: \(currentTask.status.rawValue)")
+
+            // Still try to fetch work history if possible
+            do {
+                let history = try await OfflineAPIService.shared.fetchTaskWorkHistory(taskId: task.id)
+                workHistory = history
+                print("TaskPreviewSheet: Fetched \(history.count) work history entries (offline)")
+            } catch {
+                print("🔍 FETCH DEBUG: Could not fetch work history offline: \(error)")
+                workHistory = [] // Ensure we have empty array instead of undefined state
+            }
+
+            isLoading = false
+            return
+        }
+
         do {
             let latestTask = try await OfflineAPIService.shared.fetchTask(id: task.id)
             print("🔍 FETCH DEBUG: Fetched task status: \(latestTask.status.rawValue)")
             print("🔍 FETCH DEBUG: Fetched task isPaused: \(latestTask.isPaused ?? false)")
             print("🔍 FETCH DEBUG: Fetched task currentOperator: \(latestTask.currentOperator?.name ?? "nil")")
 
-            currentTask = latestTask
-            print("TaskPreviewSheet: Updated to latest task data - status: \(latestTask.status), isPaused: \(latestTask.isPaused ?? false)")
+            // Only update if the fetched task seems more recent or valid
+            // If API fetch succeeds, trust it over current data
+            // If it returns obviously stale data (different status), be careful
+            let shouldUpdate = isOnline ? true : (latestTask.status != currentTask.status)
+
+            if shouldUpdate {
+                currentTask = latestTask
+                print("TaskPreviewSheet: Updated to latest task data - status: \(latestTask.status), isPaused: \(latestTask.isPaused ?? false)")
+            } else {
+                print("🔍 FETCH DEBUG: Keeping current task data - fetched data appears stale")
+            }
 
             // Fetch work history
             let history = try await OfflineAPIService.shared.fetchTaskWorkHistory(taskId: task.id)
@@ -597,7 +645,18 @@ struct TaskPreviewSheet: View {
             print("TaskPreviewSheet: Fetched \(history.count) work history entries")
         } catch {
             print("🔍 FETCH DEBUG: Error fetching task data: \(error)")
-            print("Error fetching latest task data: \(error)")
+            print("🔍 FETCH DEBUG: Keeping existing fresh data instead of falling back to potentially stale data")
+
+            // Don't update currentTask on error - keep the fresh data we have
+            // Still try to get work history if possible
+            do {
+                let history = try await OfflineAPIService.shared.fetchTaskWorkHistory(taskId: task.id)
+                workHistory = history
+                print("TaskPreviewSheet: Fetched \(history.count) work history entries (after fetch error)")
+            } catch {
+                print("🔍 FETCH DEBUG: Could not fetch work history: \(error)")
+                workHistory = []
+            }
         }
 
         isLoading = false
