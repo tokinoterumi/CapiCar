@@ -211,7 +211,7 @@ struct TaskDetailView: View {
                 VStack(spacing: 16) {
                     // Weight input field
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Package Weight")
+                        Text("Weight")
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundColor(.primary)
@@ -220,6 +220,7 @@ struct TaskDetailView: View {
                             TextField("0.0", text: $viewModel.weightInput)
                                 .keyboardType(.decimalPad)
                                 .textFieldStyle(.roundedBorder)
+                                .multilineTextAlignment(.center)
 
                             Text("kg")
                                 .font(.subheadline)
@@ -229,25 +230,56 @@ struct TaskDetailView: View {
 
                     // Dimensions selection field
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Package Dimensions")
+                        Text("Dimensions")
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundColor(.primary)
 
-                        Picker("Select dimensions", selection: $viewModel.selectedDimension) {
-                            ForEach(viewModel.dimensionOptions, id: \.self) { dimension in
-                                Text("\(dimension) cm")
-                                    .tag(dimension)
+                        HStack(spacing: 8) {
+                            ZStack {
+                                // Background picker (invisible but functional)
+                                Picker("Select dimensions", selection: $viewModel.selectedDimension) {
+                                    ForEach(viewModel.dimensionOptions, id: \.self) { dimension in
+                                        Text("\(dimension)")
+                                            .tag(dimension)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .opacity(0) // Hide the default picker appearance
+
+                                // Custom layout overlay
+                                HStack {
+                                    Spacer()
+
+                                    Text("\(viewModel.selectedDimension)")
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
                             }
+                            .frame(maxWidth: .infinity)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color(.systemGray4), lineWidth: 1)
+                            )
+
+                            Text("cm")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
                         }
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color(.systemGray4), lineWidth: 1)
-                        )
                     }
                 }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.secondarySystemGroupedBackground))
+                .cornerRadius(12)
             }
 
             // Status-specific secondary actions

@@ -99,10 +99,6 @@ struct InspectionView: View {
                         Text(viewModel.task.orderName)
                             .font(.title2)
                             .fontWeight(.bold)
-
-                        Text("Customer: \(viewModel.task.shippingName)")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -136,6 +132,7 @@ struct InspectionView: View {
                 InfoRow(title: "Items Count", value: "\(viewModel.totalItemsCount)")
                 InfoRow(title: "Package Weight", value: viewModel.packageWeight)
                 InfoRow(title: "Package Dimensions", value: viewModel.packageDimensions)
+                InfoRow(title: "Customer", value: viewModel.task.shippingName)
                 InfoRow(title: "Packed By", value: viewModel.packagedBy)
             }
         }
@@ -169,21 +166,20 @@ struct InspectionView: View {
             HStack {
                 if viewModel.allCriteriaChecked {
                     HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
                         Text("All criteria reviewed")
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundColor(.green)
+                            .frame(maxWidth: .infinity, alignment: .center)
                     }
                 } else {
                     HStack {
                         Text("\(viewModel.remainingCriteriaCount) criteria remaining")
                             .padding()
-                            .font(.footnote)
+                            .font(.subheadline)
                             .foregroundColor(.orange)
+                            .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
-
                 Spacer()
             }
             .padding(.horizontal)
@@ -191,7 +187,7 @@ struct InspectionView: View {
             .padding(.bottom, 8)
 
             // Action buttons
-            HStack(spacing: 36) {
+            HStack(spacing: 24) {
                 // Fail Inspection Button
                 PrimaryButton(
                     title: "Fail",
@@ -210,7 +206,7 @@ struct InspectionView: View {
                 // Pass Inspection Button
                 PrimaryButton(
                     title: "Pass",
-                    color: .green,
+                    color: .primaryTeal,
                     isLoading: viewModel.isLoading && viewModel.pendingAction == .pass,
                     isDisabled: !viewModel.canPassInspection
                 ) {
@@ -254,37 +250,22 @@ struct InspectionCriteriaRow: View {
     let onToggle: (Bool) -> Void
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             // Checkbox
             Button(action: {
                 onToggle(!isChecked)
             }) {
                 Image(systemName: isChecked ? "checkmark.square.fill" : "square")
-                    .font(.title2)
+                    .font(.title3)
                     .foregroundColor(isChecked ? .green : .gray)
             }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(criteria.title)
-                    .font(.body)
-                    .fontWeight(.medium)
-                    .foregroundColor(isChecked ? .primary : .secondary)
-                
-                if !criteria.description.isEmpty {
-                    Text(criteria.description)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            
+
+            Text(criteria.title)
+                .font(.title3)
+                .fontWeight(.medium)
+                .foregroundColor(isChecked ? .primary : .secondary)
+
             Spacer()
-            
-            // Priority indicator
-            if criteria.isRequired {
-                Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundColor(.red)
-                    .font(.caption)
-            }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

@@ -8,7 +8,6 @@ struct StaffManagementView: View {
     @EnvironmentObject private var staffManager: StaffManager
     @EnvironmentObject private var syncManager: SyncManager
     @State private var showingAddStaff = false
-    @State private var showingEditStaff = false
     @State private var editingStaff: StaffMember?
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -52,7 +51,6 @@ struct StaffManagementView: View {
                                 isEditing: false, // Remove inline editing state
                                 onEdit: {
                                     editingStaff = staff
-                                    showingEditStaff = true
                                 },
                                 onDelete: {
                                     staffToDelete = staff
@@ -109,15 +107,12 @@ struct StaffManagementView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingEditStaff) {
-            if let staff = editingStaff {
-                EditStaffSheet(staff: staff) { updatedName in
-                    Task {
-                        let success = await updateStaffMember(id: staff.id, name: updatedName)
-                        if success {
-                            showingEditStaff = false
-                            editingStaff = nil
-                        }
+        .sheet(item: $editingStaff) { staff in
+            EditStaffSheet(staff: staff) { updatedName in
+                Task {
+                    let success = await updateStaffMember(id: staff.id, name: updatedName)
+                    if success {
+                        editingStaff = nil
                     }
                 }
             }
@@ -437,20 +432,46 @@ struct AddStaffSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(staffNames.indices, id: \.self) { index in
-                            HStack {
-                                TextField("Staff Name \(index + 1)", text: $staffNames[index])
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(.body)
+            VStack(spacing: 24) {
+                // Staff Icon and Header (matching EditStaffSheet)
+                VStack(spacing: 16) {
+                    Image(systemName: "person.circle.fill")
+                        .font(.system(size: 80))
+                        .foregroundColor(.blue)
 
-                                // Remove button (only show if more than 1 field)
-                                if staffNames.count > 1 {
-                                    Button(action: { removeField(at: index) }) {
-                                        Image(systemName: "minus.circle.fill")
-                                            .foregroundColor(.red)
+                    VStack(spacing: 4) {
+                        Text("Add Staff Members")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+
+                        Text("Enter staff member names")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                // Form Fields
+                ScrollView {
+                    VStack(spacing: 16) {
+                        ForEach(staffNames.indices, id: \.self) { index in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Staff Name \(staffNames.count > 1 ? "\(index + 1)" : "")")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primary)
+
+                                HStack {
+                                    TextField("Enter staff name", text: $staffNames[index])
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.body)
+                                        .disabled(isAdding)
+
+                                    // Remove button (only show if more than 1 field)
+                                    if staffNames.count > 1 {
+                                        Button(action: { removeField(at: index) }) {
+                                            Image(systemName: "minus.circle.fill")
+                                                .foregroundColor(.red)
+                                        }
                                     }
                                 }
                             }
@@ -460,28 +481,33 @@ struct AddStaffSheet: View {
                         Button(action: addField) {
                             HStack {
                                 Image(systemName: "plus.circle.fill")
-                                Text("Add More")
+                                Text("Add Another")
                             }
                             .foregroundColor(.blue)
                         }
                         .padding(.top, 8)
                     }
-                    .padding()
+                    .padding(.horizontal)
                 }
 
                 Spacer()
             }
+            .padding()
             .navigationTitle("Add Staff Members")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(isAdding)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Add") {
                         addAllStaff()
                     }
                     .disabled(allFieldsEmpty || isAdding)
+                    .fontWeight(.semibold)
                 }
             }
         }
