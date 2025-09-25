@@ -101,6 +101,10 @@ class CorrectionFlowViewModel: ObservableObject {
             if selectedErrorType == .packingError && costImpact == .noCostImpact {
                 return "Complete Correction"
             }
+            // Check for Print New Label: if Packing Error + Affects Cost, show Print New Label
+            if selectedErrorType == .packingError && costImpact == .affectsCost {
+                return "Print New Label"
+            }
             return "Start Correction"
         case .correcting:
             return "Start Correction" // Should not be visible in this state

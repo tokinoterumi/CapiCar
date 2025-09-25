@@ -5,7 +5,6 @@ import Foundation
 struct InspectionCriteria: Identifiable, Codable {
     let id: String
     let title: String
-    let description: String
     let isRequired: Bool
     let category: InspectionCategory
     
@@ -57,50 +56,43 @@ class InspectionViewModel: ObservableObject {
         InspectionCriteria(
             id: "packaging_integrity",
             title: "Package Integrity",
-            description: "Box is undamaged with proper sealing",
             isRequired: true,
             category: .packaging
         ),
         InspectionCriteria(
             id: "correct_items",
             title: "Correct Items",
-            description: "All items match the order checklist",
             isRequired: true,
             category: .contents
         ),
         InspectionCriteria(
             id: "item_condition",
             title: "Item Condition",
-            description: "Items are undamaged and in good condition",
             isRequired: true,
             category: .quality
         ),
         InspectionCriteria(
             id: "shipping_label",
             title: "Shipping Label",
-            description: "Label is properly attached and readable",
             isRequired: true,
             category: .labeling
         ),
         InspectionCriteria(
             id: "packing_materials",
             title: "Packing Materials",
-            description: "Appropriate protective materials used",
-            isRequired: false,
+            isRequired: true,
             category: .packaging
         ),
         InspectionCriteria(
             id: "weight_accuracy",
             title: "Weight Accuracy",
-            description: "Package weight matches recorded weight",
-            isRequired: false,
+            isRequired: true,
             category: .packaging
         ),
         InspectionCriteria(
             id: "documentation",
             title: "Documentation",
-            description: "All required documents included",
-            isRequired: false,
+            isRequired: true,
             category: .contents
         )
     ]

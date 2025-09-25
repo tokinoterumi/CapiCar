@@ -171,10 +171,6 @@ struct ReportIssueView: View {
             TextField("Describe the issue in detail...", text: $viewModel.issueDescription, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(4...8)
-
-            Text("Please provide as much detail as possible to help resolve the issue.")
-                .font(.caption)
-                .foregroundColor(.secondary)
         }
         .padding()
         .cornerRadius(12)
@@ -183,7 +179,7 @@ struct ReportIssueView: View {
     private var actionButtonsSection: some View {
         VStack(spacing: 16) {
             PrimaryButton(
-                title: "Submit Issue Report",
+                title: "Submit",
                 isLoading: viewModel.isLoading,
                 isDisabled: !viewModel.canSubmitReport,
                 action: {
@@ -193,12 +189,6 @@ struct ReportIssueView: View {
                     }
                 }
             )
-
-            if !viewModel.canSubmitReport {
-                Text("Please select an issue type to continue")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
         }
     }
 }
