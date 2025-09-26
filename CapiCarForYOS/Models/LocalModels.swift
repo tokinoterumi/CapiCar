@@ -19,9 +19,6 @@ enum SyncStatus: String, Codable {
     /// 任務已在本地暫停，等待同步暫停狀態回伺服器。
     case pausedPendingSync
 
-    /// 本地變更需要優先同步 (timestamp conflict resolved in favor of local)
-    case pendingPrioritySync
-
     /// 檢測到衝突，需要人工解決 (timestamps too close)
     case conflictPendingResolution
 
@@ -169,8 +166,6 @@ enum LocalTaskStatus: String, Codable {
     /// 任務已被領取並正在執行中。
     case picking
 
-    /// 任務撿選完成，等待包裝
-    case picked
 
     /// 任務已包裝，等待檢查
     case packed
@@ -295,7 +290,7 @@ final class LocalTask {
         self.localOperationCount = 0 // 新任務無本地操作
 
         // 初始化新增欄位
-        self.claimedAt = (status == .picking || status == .picked) ? Date() : nil
+        self.claimedAt = (status == .picking) ? Date() : nil
         self.lastSyncedAt = nil // 新任務尚未同步
         self.pendingReleaseOperatorId = nil // 初始化時無待釋放操作員
         self.requiresBackgroundSync = false // 預設不需要背景同步
@@ -313,8 +308,6 @@ extension LocalTask {
             taskStatus = .pending
         case .picking:
             taskStatus = .picking
-        case .picked:
-            taskStatus = .picked
         case .packed:
             taskStatus = .packed
         case .inspecting:
@@ -331,7 +324,7 @@ extension LocalTask {
             taskStatus = .pending // Return to pending when paused
         }
 
-        let currentOperator = StaffMember(id: assignedStaffId, name: assignedStaffName)
+        let currentOperator = assignedStaffId.isEmpty ? nil : StaffMember(id: assignedStaffId, name: assignedStaffName)
 
         // Convert checklist items back to JSON string
         let checklistJSON: String
@@ -682,14 +675,10 @@ extension LocalTaskStatus {
             self = .pending
         case .picking:
             self = .picking
-        case .picked:
-            self = .picked
         case .packed:
             self = .packed
         case .inspecting:
             self = .inspecting
-        case .inspected:
-            self = .inspecting // Map inspected back to inspecting for local state
         case .correctionNeeded:
             self = .correctionNeeded
         case .correcting:
@@ -776,4 +765,3 @@ final class LocalChecklistItem {
         self.status = status
     }
 }
-

@@ -13,10 +13,7 @@ router.get('/', async (req, res) => {
         // 2. Transform granular groups into simplified user-friendly groups
         const simplifiedGroupedTasks = {
             pending: granularGroupedTasks.pending,
-            picking: [
-                ...granularGroupedTasks.picking,
-                ...granularGroupedTasks.picked
-            ],
+            picking: granularGroupedTasks.picking, // No more picked status to combine
             packed: granularGroupedTasks.packed,
             inspecting: [
                 ...granularGroupedTasks.inspecting,

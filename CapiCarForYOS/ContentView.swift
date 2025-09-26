@@ -98,10 +98,11 @@ struct ContentView: View {
             if !hasPerformedInitialLoad {
                 hasPerformedInitialLoad = true
                 Task {
-                    // Load both staff and dashboard data on first app launch
-                    async let staffLoad = staffManager.fetchAvailableStaffIfNeeded()
-                    async let dashboardLoad = dashboardViewModel.fetchDashboardDataIfNeeded()
-                    await (staffLoad, dashboardLoad)
+                    // Load both staff and dashboard data on first app launch concurrently
+                    await withTaskGroup(of: Void.self) { group in
+                        group.addTask { await staffManager.fetchAvailableStaffIfNeeded() }
+                        group.addTask { await dashboardViewModel.fetchDashboardDataIfNeeded() }
+                    }
                 }
             }
         }

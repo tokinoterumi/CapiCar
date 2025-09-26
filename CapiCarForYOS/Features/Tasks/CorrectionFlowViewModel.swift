@@ -244,7 +244,48 @@ class CorrectionFlowViewModel: ObservableObject {
 
         isLoading = false
     }
-    
+
+    func printNewLabel() async {
+        guard let errorType = selectedErrorType,
+              let operatorId = currentOperator?.id else {
+            errorMessage = "Missing required information to print new label"
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            // Prepare payload with correction details for label creation
+            var payload = [
+                "errorType": errorType.rawValue,
+                "correctionPlan": correctionPlan,
+                "action": "print_new_label"
+            ]
+
+            if let impact = costImpact {
+                payload["costImpact"] = impact.rawValue
+            }
+
+            // Print new label and complete task directly
+            let updatedTask = try await offlineAPIService.performTaskAction(
+                taskId: task.id,
+                action: .labelCreated,
+                operatorId: operatorId,
+                payload: payload
+            )
+
+            task = updatedTask
+            print("✅ New label printed and task completed successfully")
+
+        } catch {
+            errorMessage = "Failed to print new label: \(error.localizedDescription)"
+            print("Error printing new label: \(error)")
+        }
+
+        isLoading = false
+    }
+
     func completeHappyPathWorkflow() async {
         // For happy path: start and complete correction in one seamless workflow
         await startCorrection()

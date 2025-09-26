@@ -19,6 +19,7 @@ export interface FulfillmentTask {
     inExceptionPool?: boolean;
     exceptionReason?: string;
     exceptionLoggedAt?: string;
+    exceptionNotes?: string;
     // Conflict resolution fields
     lastModifiedAt?: string; // ISO8601 timestamp for conflict resolution
     operationSequence?: number; // Operation sequence number from audit log
@@ -32,10 +33,8 @@ export interface StaffMember {
 export enum TaskStatus {
     PENDING = 'Pending',
     PICKING = 'Picking',
-    PICKED = 'Picked',
     PACKED = 'Packed',
     INSPECTING = 'Inspecting',
-    INSPECTED = 'Inspected',
     CORRECTION_NEEDED = 'Correction_Needed',
     CORRECTING = 'Correcting',
     COMPLETED = 'Completed',
@@ -44,14 +43,13 @@ export enum TaskStatus {
 
 export enum TaskAction {
     START_PICKING = 'START_PICKING',
-    COMPLETE_PICKING = 'COMPLETE_PICKING',
     START_PACKING = 'START_PACKING',
     START_INSPECTION = 'START_INSPECTION',
-    COMPLETE_INSPECTION_CRITERIA = 'COMPLETE_INSPECTION_CRITERIA',
     COMPLETE_INSPECTION = 'COMPLETE_INSPECTION',
     ENTER_CORRECTION = 'ENTER_CORRECTION',
     START_CORRECTION = 'START_CORRECTION',
     RESOLVE_CORRECTION = 'RESOLVE_CORRECTION',
+    LABEL_CREATED = 'LABEL_CREATED',
     REPORT_EXCEPTION = 'REPORT_EXCEPTION',
     PAUSE_TASK = 'PAUSE_TASK',
     RESUME_TASK = 'RESUME_TASK',

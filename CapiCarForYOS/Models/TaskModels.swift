@@ -55,10 +55,8 @@ struct WorkHistoryEntry: Codable, Identifiable {
 enum TaskStatus: String, CaseIterable, Codable {
     case pending = "Pending"
     case picking = "Picking"
-    case picked = "Picked"
     case packed = "Packed"
     case inspecting = "Inspecting"
-    case inspected = "Inspected"
     case correctionNeeded = "Correction_Needed"
     case correcting = "Correcting"
     case completed = "Completed"
@@ -69,10 +67,8 @@ enum TaskStatus: String, CaseIterable, Codable {
 enum DisplayStatus: String, CaseIterable {
     case pending = "Pending"
     case picking = "Picking"
-    case picked = "Picked"
     case packed = "Packed"
     case inspecting = "Inspecting"
-    case inspected = "Inspected"
     case correctionNeeded = "Correction_Needed"
     case correcting = "Correcting"
     case completed = "Completed"
@@ -138,14 +134,12 @@ extension FulfillmentTask {
         switch status {
         case .pending:
             return .pending
-        case .picking, .picked:
+        case .picking:
             return .picking
         case .packed:
             return .packed
         case .inspecting, .correctionNeeded, .correcting:
             return .inspecting
-        case .inspected:
-            return .inspecting // Map inspected to inspecting for display
         case .completed:
             return .completed
         case .cancelled:
@@ -207,7 +201,7 @@ struct ChecklistItem: Identifiable, Codable {
 // Simplified grouping that combines granular statuses for better UX
 struct GroupedTasks: Codable {
     let pending: [FulfillmentTask]       // pending
-    let picking: [FulfillmentTask]       // picking + picked
+    let picking: [FulfillmentTask]       // picking
     let packed: [FulfillmentTask]        // packed
     let inspecting: [FulfillmentTask]    // inspecting + correctionNeeded + correcting
     let completed: [FulfillmentTask]     // completed

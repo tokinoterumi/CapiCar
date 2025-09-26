@@ -92,6 +92,7 @@ class SyncManager: ObservableObject {
         networkMonitor.start(queue: DispatchQueue(label: "NetworkMonitor"))
         scheduleAppRefresh() // 嘗試在啟動時安排一次背景任務
         startPeriodicSync() // 啟動定期同步
+        performInitialConnectivityTest() // Test connectivity immediately
         print("🔥 SYNCMANAGER: Network monitor and periodic sync started")
     }
 
@@ -118,6 +119,71 @@ class SyncManager: ObservableObject {
     /// Force sync now - alias for triggerSync for UI compatibility
     func forceSyncNow() async {
         await triggerSync()
+    }
+
+    /// Test connectivity immediately by attempting a quick API call
+    /// This updates the isOnline status in real-time
+    func testConnectivity() async {
+        print("🔍 CONNECTIVITY TEST: Testing network connectivity")
+
+        do {
+            // Try a quick API call to test connectivity
+            let _ = try await apiService.fetchDashboardData()
+
+            // If we get here, we're online
+            if !self.isOnline {
+                print("🔍 CONNECTIVITY TEST: ✅ Detected online - updating status")
+                self.isOnline = true
+                // Notify UI components about network status change
+                NotificationCenter.default.post(name: NSNotification.Name("NetworkStatusChanged"), object: nil, userInfo: ["isOnline": true])
+            }
+        } catch {
+            // If API call fails, we're likely offline
+            if self.isOnline {
+                print("🔍 CONNECTIVITY TEST: ❌ Detected offline - updating status: \(error)")
+                self.isOnline = false
+                // Notify UI components about network status change
+                NotificationCenter.default.post(name: NSNotification.Name("NetworkStatusChanged"), object: nil, userInfo: ["isOnline": false])
+            }
+        }
+    }
+
+    /// 執行深度同步，包括完整的資料對帳步驟
+    /// 建議定期執行以清理孤立資料
+    func performDeepSync() async {
+        guard !isSyncing else {
+            print("🔄 DEEP SYNC: Already syncing, skipping")
+            return
+        }
+
+        guard isOnline else {
+            print("❌ DEEP SYNC: Device offline, cannot perform deep sync")
+            return
+        }
+
+        print("🔍 DEEP SYNC: Starting comprehensive sync with full reconciliation")
+
+        isSyncing = true
+        lastSyncError = nil
+
+        do {
+            // Phase 1: Pull with full reconciliation
+            let dashboardData = try await apiService.fetchDashboardData()
+            let serverTasks = extractAllTasks(from: dashboardData)
+            try await mergeServerDataWithLocal(serverTasks, performReconciliation: true)
+
+            // Phase 2: Push all pending changes
+            try await performPushPhase()
+
+            lastSyncTime = Date()
+            print("✅ DEEP SYNC: Completed successfully with full reconciliation")
+
+        } catch {
+            lastSyncError = "Deep sync failed: \(error.localizedDescription)"
+            print("❌ DEEP SYNC: Failed - \(error)")
+        }
+
+        isSyncing = false
     }
 
     /// Queue a task action for offline sync
@@ -295,9 +361,10 @@ class SyncManager: ObservableObject {
     }
 
     /// Merge server data with local data using proper conflict resolution
-    private func mergeServerDataWithLocal(_ serverTasks: [FulfillmentTask]) async throws {
+    private func mergeServerDataWithLocal(_ serverTasks: [FulfillmentTask], performReconciliation: Bool = true) async throws {
         print("🔀 MERGE PHASE: Starting server-local data merge")
 
+        // Step 1: Merge/update existing tasks
         for serverTask in serverTasks {
             do {
                 try await mergeIndividualTask(serverTask)
@@ -307,7 +374,66 @@ class SyncManager: ObservableObject {
             }
         }
 
+        // Step 2: Reconciliation - remove local tasks that no longer exist on server
+        if performReconciliation {
+            try await reconcileDeletedTasks(serverTasks: serverTasks)
+        } else {
+            print("🧹 RECONCILIATION: Skipped for quick sync")
+        }
+
         print("🔀 MERGE PHASE: Completed")
+    }
+
+    /// Reconciliation step: Remove local tasks that no longer exist on the server
+    /// This prevents "ghost data" where deleted server tasks persist locally
+    private func reconcileDeletedTasks(serverTasks: [FulfillmentTask]) async throws {
+        print("🧹 RECONCILIATION: Starting ghost data cleanup")
+
+        // Get all server task IDs
+        let serverTaskIds = Set(serverTasks.map { $0.id })
+
+        // Get all local tasks
+        let allLocalTasks = try databaseManager.fetchAllLocalTasks()
+
+        // Find local tasks that don't exist on server
+        let localTasksToDelete = allLocalTasks.filter { localTask in
+            !serverTaskIds.contains(localTask.id)
+        }
+
+        if localTasksToDelete.isEmpty {
+            print("🧹 RECONCILIATION: No ghost data found")
+            return
+        }
+
+        print("🧹 RECONCILIATION: Found \(localTasksToDelete.count) potential ghost tasks")
+
+        var deletedCount = 0
+        var skippedCount = 0
+
+        for localTask in localTasksToDelete {
+            // Only delete if the task has NO pending changes
+            let pendingOperations = localTask.pendingOperations.filter {
+                $0.status == .pending || $0.status == .awaitingAck
+            }
+            let hasPendingChanges = localTask.syncStatus != .synced || !pendingOperations.isEmpty
+
+            if hasPendingChanges {
+                print("⚠️ RECONCILIATION: Keeping ghost task \(localTask.id) - has pending changes (status: \(localTask.syncStatus), pending ops: \(pendingOperations.count))")
+                skippedCount += 1
+                continue
+            }
+
+            // Safe to delete - no pending local changes
+            do {
+                try databaseManager.deleteSyncedTask(taskId: localTask.id)
+                print("🗑️ RECONCILIATION: Deleted ghost task \(localTask.id)")
+                deletedCount += 1
+            } catch {
+                print("❌ RECONCILIATION: Failed to delete ghost task \(localTask.id) - \(error)")
+            }
+        }
+
+        print("🧹 RECONCILIATION: Completed ghost data cleanup (deleted: \(deletedCount), kept: \(skippedCount))")
     }
 
     /// Merge individual task with proper conflict resolution
@@ -398,10 +524,10 @@ class SyncManager: ObservableObject {
 
         case .useLocal(let reason):
             print("📤 CONFLICT: Using local version - \(reason)")
-            localTask.syncStatus = .pendingPrioritySync
+            localTask.syncStatus = .pendingSync
             localTask.markRequiresBackgroundSync(reason: "Conflict resolved in favor of local")
 
-        case .requiresManualResolution(let localVersion, let serverVersion, let reason):
+        case .requiresManualResolution(_, _, let reason):
             print("⚠️ CONFLICT: Manual resolution required - \(reason)")
             try await preserveConflictingVersions(localTask: localTask, serverTask: serverTask, reason: reason)
         }
@@ -411,7 +537,7 @@ class SyncManager: ObservableObject {
     private func preserveConflictingVersions(localTask: LocalTask, serverTask: FulfillmentTask, reason: String) async throws {
         // Create conflict record
         let conflictId = UUID().uuidString
-        let conflictData = ConflictData(
+        let _ = ConflictData(
             id: conflictId,
             taskId: localTask.id,
             localVersion: localTask.asFulfillmentTask,
@@ -506,24 +632,12 @@ class SyncManager: ObservableObject {
                 // 已完成/取消的任務：同步成功後從本地刪除
                 try databaseManager.deleteSyncedTask(taskId: localTask.id)
                 print("已從本地刪除已終結的任務: \(localTask.id)")
-            case .pending, .picking, .picked, .packed, .inspecting, .correctionNeeded, .correcting:
+            case .pending, .picking, .packed, .inspecting, .correctionNeeded, .correcting:
                 // 仍在進行中的任務：僅標記為已同步
                 try databaseManager.markTaskAsSynced(taskId: localTask.id)
                 print("已將進行中的任務標記為同步完成: \(localTask.id)")
             case .pausedPendingSync:
                 // This shouldn't happen since we handle this in the outer switch
-                break
-            }
-        case .pendingPrioritySync:
-            // 優先同步任務：處理方式與 pendingSync 相同，但具有更高優先級
-            switch localTask.status {
-            case .completed, .cancelled:
-                try databaseManager.deleteSyncedTask(taskId: localTask.id)
-                print("已從本地刪除優先同步的已終結任務: \(localTask.id)")
-            case .pending, .picking, .picked, .packed, .inspecting, .correctionNeeded, .correcting:
-                try databaseManager.markTaskAsSynced(taskId: localTask.id)
-                print("已將優先同步的進行中任務標記為同步完成: \(localTask.id)")
-            case .pausedPendingSync:
                 break
             }
         case .conflictPendingResolution:
@@ -537,6 +651,10 @@ class SyncManager: ObservableObject {
         case .synced, .error:
             // 這些狀態不應該在待同步列表中
             break
+        case .pendingPrioritySync:
+            // Deprecated case - treat as pendingSync
+            print("⚠️ Encountered deprecated pendingPrioritySync - please clear local data")
+            try databaseManager.markTaskAsSynced(taskId: localTask.id)
         }
     }
 
@@ -557,17 +675,23 @@ class SyncManager: ObservableObject {
 
         // Replay each operation in sequence
         for operation in operationsToSync {
-            print("🎬 SYNC: Replaying \(operation.actionType) (sequence: \(operation.localSequence))")
+            print("🎬 SYNC: Replaying \(operation.actionType) (sequence: \(operation.localSequence)) - Attempt \(operation.retryCount + 1)")
+
+            // Check if operation has exceeded retry limit BEFORE attempting
+            if operation.retryCount >= 5 { // Default max retries is 5
+                print("⚠️ SYNC: Operation \(operation.actionType) exceeded max retries (\(operation.retryCount)), marking as failed")
+                operation.status = .failed
+                continue
+            }
 
             // Mark operation as awaiting server acknowledgment BEFORE sending
             operation.status = .awaitingAck
-            operation.incrementRetryCount()
 
             do {
                 // Convert operation action type to TaskAction
                 guard let taskAction = TaskAction(rawValue: operation.actionType) else {
-                    print("⚠️ SYNC WARNING: Unknown action type \(operation.actionType), skipping")
-                    operation.status = .pending // Reset to allow retry
+                    print("⚠️ SYNC WARNING: Unknown action type \(operation.actionType), marking as failed")
+                    operation.status = .failed
                     continue
                 }
 
@@ -593,14 +717,30 @@ class SyncManager: ObservableObject {
                 print("✅ SYNC: Successfully synced operation \(operation.actionType)")
 
             } catch {
-                // If sync fails, reset to pending for retry in next sync cycle
+                // Increment retry count and reset to pending for next sync cycle
+                operation.retryCount += 1
                 operation.status = .pending
-                print("❌ SYNC FAILED: Operation \(operation.actionType) failed, will retry - \(error)")
+                print("❌ SYNC FAILED: Operation \(operation.actionType) failed (attempt \(operation.retryCount)/5), will retry - \(error)")
                 throw error
             }
         }
 
-        print("🎯 SYNC: All pending operations synced for task \(localTask.id)")
+        print("🎯 SYNC: All pending operations processed for task \(localTask.id)")
+
+        // Update task sync status based on remaining operations
+        let remainingPendingOps = localTask.pendingOperations.filter { $0.status == .pending }
+        let remainingAwaitingOps = localTask.pendingOperations.filter { $0.status == .awaitingAck }
+        let failedOps = localTask.pendingOperations.filter { $0.status == .failed }
+
+        if remainingPendingOps.isEmpty && remainingAwaitingOps.isEmpty {
+            // All operations are either synced or failed - task is effectively synced
+            try databaseManager.updateTaskSyncStatus(taskId: localTask.id, syncStatus: .synced)
+            if !failedOps.isEmpty {
+                print("⚠️ SYNC: Task \(localTask.id) marked as synced but has \(failedOps.count) permanently failed operations")
+            }
+        } else {
+            print("📋 SYNC: Task \(localTask.id) has \(remainingPendingOps.count) pending and \(remainingAwaitingOps.count) awaiting operations remaining")
+        }
     }
 
     /// 同步審計日誌到伺服器
@@ -608,28 +748,22 @@ class SyncManager: ObservableObject {
     private func syncAuditLog(_ auditLog: LocalAuditLog) async throws {
         print("📝 SYNC: Syncing audit log \(auditLog.actionType) for task \(auditLog.taskId)")
 
-        // TODO: Add API endpoint for syncing audit logs to server
-        // For now, we'll need to add this to the backend API
+        // Call the real audit log sync endpoint with array of logs
+        let response = try await apiService.syncAuditLog([auditLog])
 
-        // Prepare audit log payload matching server schema
-        let auditPayload: [String: Any] = [
-            "timestamp": ISO8601DateFormatter().string(from: auditLog.timestamp),
-            "action_type": auditLog.actionType,
-            "staff_id": auditLog.staffId,
-            "task_id": auditLog.taskId,
-            "operation_sequence": auditLog.operationSequence,
-            "old_value": auditLog.oldValue ?? NSNull(),
-            "new_value": auditLog.newValue ?? NSNull(),
-            "details": auditLog.details,
-            "deletion_flag": auditLog.deletionFlag
-        ]
-
-        // Call the placeholder API method (will become real when server endpoint is ready)
-        try await apiService.syncAuditLog(auditPayload)
-
-        // Mark as synced locally after successful API call
-        try databaseManager.markAuditLogAsSynced(logId: auditLog.id)
-        print("✅ SYNC: Audit log \(auditLog.id) marked as synced")
+        // Check if sync was successful
+        if response.syncedCount == 1 {
+            // Mark as synced locally after successful API call
+            try databaseManager.markAuditLogAsSynced(logId: auditLog.id)
+            print("✅ SYNC: Audit log \(auditLog.id) marked as synced")
+        } else {
+            // Handle partial failure
+            if !response.errors.isEmpty {
+                let errorMessage = response.errors.first?.error ?? "Unknown sync error"
+                print("⚠️ SYNC: Audit log sync failed: \(errorMessage)")
+                throw APIError.serverError(message: errorMessage)
+            }
+        }
     }
 
     /// 建立上傳至 API 的 payload。
@@ -657,11 +791,22 @@ class SyncManager: ObservableObject {
         print("🔥 SYNCMANAGER: Setting up network monitoring")
         networkMonitor.pathUpdateHandler = { path in
             Task { @MainActor in
-                let newOnlineStatus = path.status == .satisfied
-                print("🔥 SYNCMANAGER: Network path status = \(path.status), isOnline = \(newOnlineStatus)")
+                // More aggressive offline detection
+                let hasConnection = path.status == .satisfied
+                let hasWiFi = path.usesInterfaceType(.wifi)
+                let hasCellular = path.usesInterfaceType(.cellular)
+                let isExpensive = path.isExpensive
+
+                // Consider offline if no interface available or explicitly unsatisfied
+                let newOnlineStatus = hasConnection && (hasWiFi || hasCellular)
+
+                print("🔥 SYNCMANAGER: Network path status = \(path.status)")
+                print("🔥 SYNCMANAGER: WiFi: \(hasWiFi), Cellular: \(hasCellular), Expensive: \(isExpensive)")
+                print("🔥 SYNCMANAGER: Computed isOnline = \(newOnlineStatus)")
+
                 if self.isOnline != newOnlineStatus {
                     self.isOnline = newOnlineStatus
-                    print("🔥 SYNCMANAGER: 網路狀態改變: \(self.isOnline ? "在線" : "離線")")
+                    print("🔥 SYNCMANAGER: ⚡ 網路狀態改變: \(self.isOnline ? "在線" : "離線")")
 
                     // 當網路從離線變為在線時，觸發一次同步
                     if self.isOnline {
@@ -672,6 +817,15 @@ class SyncManager: ObservableObject {
                     print("🔥 SYNCMANAGER: Network status unchanged: \(self.isOnline ? "在線" : "離線")")
                 }
             }
+        }
+    }
+
+    /// Perform initial connectivity test after app launch
+    private func performInitialConnectivityTest() {
+        Task {
+            // Wait a bit for network to settle after app launch
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            await testConnectivity()
         }
     }
 
@@ -821,33 +975,27 @@ class SyncManager: ObservableObject {
         isSyncing = true
         lastSyncError = nil
 
-        do {
-            print("🔄 BACKGROUND SYNC: Starting pull-merge-push cycle")
+        print("🔄 BACKGROUND SYNC: Starting pull-merge-push cycle")
 
-            // 檢查取消狀態
-            if isCancelledCheck() {
-                print("🔚 BACKGROUND: Sync cancelled during startup")
-                return
-            }
-
-            // Phase 1: Quick pull phase (只獲取最新資料，不做複雜合併)
-            await performSimplePullPhase(isCancelledCheck: isCancelledCheck)
-
-            if isCancelledCheck() {
-                print("🔚 BACKGROUND: Sync cancelled after pull phase")
-                return
-            }
-
-            // Phase 2: Push critical pending changes only
-            await performCriticalPushPhase(isCancelledCheck: isCancelledCheck)
-
-            lastSyncTime = Date()
-            print("✅ BACKGROUND SYNC: Completed successfully")
-
-        } catch {
-            lastSyncError = "背景同步失敗: \(error.localizedDescription)"
-            print("❌ BACKGROUND SYNC: Failed - \(lastSyncError!)")
+        // 檢查取消狀態
+        if isCancelledCheck() {
+            print("🔚 BACKGROUND: Sync cancelled during startup")
+            return
         }
+
+        // Phase 1: Quick pull phase (只獲取最新資料，不做複雜合併)
+        await performSimplePullPhase(isCancelledCheck: isCancelledCheck)
+
+        if isCancelledCheck() {
+            print("🔚 BACKGROUND: Sync cancelled after pull phase")
+            return
+        }
+
+        // Phase 2: Push critical pending changes only
+        await performCriticalPushPhase(isCancelledCheck: isCancelledCheck)
+
+        lastSyncTime = Date()
+        print("✅ BACKGROUND SYNC: Completed successfully")
 
         isSyncing = false
     }
@@ -891,7 +1039,7 @@ class SyncManager: ObservableObject {
 
             // 優先處理已完成或取消的任務（這些最需要同步）
             let criticalTasks = tasksToSync.filter { task in
-                task.status == .completed || task.status == .cancelled || task.syncStatus == .pendingPrioritySync
+                task.status == .completed || task.status == .cancelled || task.syncStatus == .pendingSync
             }.prefix(5) // 限制數量
 
             print("📤 BACKGROUND PUSH: Processing \(criticalTasks.count) critical tasks")

@@ -39,11 +39,29 @@ struct DashboardView: View {
                     mainContentView
                 }
             }
+            // DEBUG: Temporary button to clear local data for testing
+            .overlay(alignment: .topTrailing) {
+                Button("🧹 CLEAR") {
+                    Task {
+                        await viewModel.clearAllLocalData()
+                    }
+                }
+                .foregroundColor(.red)
+                .padding()
+                .background(Color.black.opacity(0.1))
+                .cornerRadius(8)
+                .padding()
+            }
             // Navigation is now handled by TaskGroupView sheets
             // Removed onAppear auto-loading - data loads via pull-to-refresh or explicit user action
             // Smart refresh when returning to dashboard after potential data changes
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                // Mark data as potentially changed when returning from background
+                // Trigger proactive sync when returning to dashboard from background
+                Task {
+                    print("📱 DASHBOARD: App entered foreground, triggering proactive sync")
+                    await SyncManager.shared.triggerSync()
+                }
+                // Also mark data as potentially changed for immediate UI refresh if needed
                 viewModel.markDataChangesPending()
             }
         }

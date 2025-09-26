@@ -376,7 +376,7 @@ export class AirtableService {
     async moveTaskToExceptionPool(
         taskId: string,
         exceptionReason: string,
-        _description: string,
+        description: string,
         _reportingOperatorId: string
     ): Promise<void> {
         try {
@@ -386,13 +386,14 @@ export class AirtableService {
                 status: TaskStatus.PENDING,
                 in_exception_pool: true,
                 exception_reason: exceptionReason,
+                exception_notes: description,
                 exception_logged_at: now,
                 current_operator: '', // Clear current operator
                 return_to_pending_at: now,
                 updated_at: now
             });
 
-            console.log(`Task ${taskId} moved to exception pool with reason: ${exceptionReason}`);
+            console.log(`Task ${taskId} moved to exception pool with reason: ${exceptionReason} and description: ${description.substring(0, 50)}${description.length > 50 ? '...' : ''}`);
         } catch (error) {
             console.error('Error moving task to exception pool:', error);
             throw new Error('Failed to move task to exception pool');
@@ -445,7 +446,8 @@ export class AirtableService {
         actionType: string,
         oldValue?: string,
         newValue?: string,
-        details?: string
+        details?: string,
+        timestamp?: string
     ): Promise<number> {
         try {
             // First validate that the staff member exists and get the record ID
@@ -470,7 +472,7 @@ export class AirtableService {
 
             // Prepare fields, avoiding empty strings for multiple choice fields
             const auditFields: any = {
-                timestamp: new Date().toISOString(),
+                timestamp: timestamp || new Date().toISOString(),
                 staff_id: [staffRecordId], // Link to Staff (using actual record ID)
                 task_id: taskId, // Single line text
                 action_type: mappedActionType,
@@ -503,8 +505,6 @@ export class AirtableService {
         switch (status) {
             case TaskStatus.PICKING:
                 return 'START_PICKING';
-            case TaskStatus.PICKED:
-                return 'COMPLETE_PICKING';
             case TaskStatus.PACKED:
                 return 'START_PACKING';
             case TaskStatus.INSPECTING:
@@ -527,11 +527,11 @@ export class AirtableService {
         // Map to actual action types that exist in Airtable Audit_Log table
         const actionMappings: { [key: string]: string } = {
             'START_PICKING': 'Tasked_Started',
-            'COMPLETE_PICKING': 'Task_Picked',
+            // 'COMPLETE_PICKING': removed - no longer exists in simplified design
             'START_PACKING': 'Packing_Started',
             'START_INSPECTION': 'Inspection_Started',
-            'COMPLETE_INSPECTION': 'Task_Inspected',
-            'ENTER_CORRECTION': 'Inspection_Failed',
+            'COMPLETE_INSPECTION': 'Task_Completed', // Optimistic completion - goes directly to completed
+            'ENTER_CORRECTION': 'Inspection_Failed', // Explicit failure action when issues found
             'START_CORRECTION': 'Correction_Started',
             'RESOLVE_CORRECTION': 'Correction_Completed',
             'REPORT_EXCEPTION': 'Exception_Logged',
@@ -551,10 +551,10 @@ export class AirtableService {
 
         const displayMappings: { [key: string]: string } = {
             'Tasked_Started': 'Task Started',
-            'Task_Picked': 'Picking Completed',
+            // 'Task_Picked': removed - no longer exists in simplified design
             'Packing_Started': 'Packing Completed',
             'Inspection_Started': 'Inspection Started',
-            'Task_Inspected': 'Inspection Passed',
+            'Task_Completed': 'Task Completed', // Optimistic inspection completion
             'Inspection_Failed': 'Inspection Failed - Correction Required',
             'Correction_Started': 'Correction Started',
             'Correction_Completed': 'Task Completed via Correction',
@@ -577,10 +577,10 @@ export class AirtableService {
     private getActionIcon(actionType: string): string {
         const iconMappings: { [key: string]: string } = {
             'Tasked_Started': 'play.circle',
-            'Task_Picked': 'basket.fill',
+            // 'Task_Picked': removed - no longer exists in simplified design
             'Packing_Started': 'shippingbox',
             'Inspection_Started': 'magnifyingglass',
-            'Task_Inspected': 'checkmark.seal',
+            'Task_Completed': 'checkmark.seal', // Optimistic inspection completion
             'Inspection_Failed': 'exclamationmark.triangle',
             'Correction_Started': 'wrench',
             'Correction_Completed': 'checkmark.circle.fill',
@@ -673,6 +673,7 @@ export class AirtableService {
             inExceptionPool: record.get('in_exception_pool') as boolean || false,
             exceptionReason: record.get('exception_reason') as string || undefined,
             exceptionLoggedAt: record.get('exception_logged_at') as string || undefined,
+            exceptionNotes: record.get('exception_notes') as string || undefined,
             // Conflict resolution fields
             lastModifiedAt: lastModifiedAt,
             operationSequence: operationSequence // Use pre-fetched sequence
@@ -749,6 +750,7 @@ export class AirtableService {
             inExceptionPool: record.get('in_exception_pool') as boolean || false,
             exceptionReason: record.get('exception_reason') as string || undefined,
             exceptionLoggedAt: record.get('exception_logged_at') as string || undefined,
+            exceptionNotes: record.get('exception_notes') as string || undefined,
             // Conflict resolution fields
             lastModifiedAt: lastModifiedAtISO,
             operationSequence: operationSequence
@@ -937,7 +939,6 @@ export class AirtableService {
     async getTasksGroupedByStatus(): Promise<{
         pending: FulfillmentTask[];
         picking: FulfillmentTask[];
-        picked: FulfillmentTask[];
         packed: FulfillmentTask[];
         inspecting: FulfillmentTask[];
         correctionNeeded: FulfillmentTask[];
@@ -951,7 +952,6 @@ export class AirtableService {
         return {
             pending: allTasks.filter(task => task.status === TaskStatus.PENDING && !task.isPaused),
             picking: allTasks.filter(task => task.status === TaskStatus.PICKING && !task.isPaused),
-            picked: allTasks.filter(task => task.status === TaskStatus.PICKED && !task.isPaused),
             packed: allTasks.filter(task => task.status === TaskStatus.PACKED && !task.isPaused),
             inspecting: allTasks.filter(task => task.status === TaskStatus.INSPECTING && !task.isPaused),
             correctionNeeded: allTasks.filter(task => task.status === TaskStatus.CORRECTION_NEEDED && !task.isPaused),
@@ -966,7 +966,6 @@ export class AirtableService {
         grouped: {
             pending: FulfillmentTask[];
             picking: FulfillmentTask[];
-            picked: FulfillmentTask[];
             packed: FulfillmentTask[];
             inspecting: FulfillmentTask[];
             correctionNeeded: FulfillmentTask[];
@@ -982,7 +981,6 @@ export class AirtableService {
         const grouped = {
             pending: tasks.filter(task => task.status === TaskStatus.PENDING && !task.isPaused),
             picking: tasks.filter(task => task.status === TaskStatus.PICKING && !task.isPaused),
-            picked: tasks.filter(task => task.status === TaskStatus.PICKED && !task.isPaused),
             packed: tasks.filter(task => task.status === TaskStatus.PACKED && !task.isPaused),
             inspecting: tasks.filter(task => task.status === TaskStatus.INSPECTING && !task.isPaused),
             correctionNeeded: tasks.filter(task => task.status === TaskStatus.CORRECTION_NEEDED && !task.isPaused),

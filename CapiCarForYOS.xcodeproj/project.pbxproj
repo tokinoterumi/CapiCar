@@ -16,6 +16,7 @@
 		063898462E7862AF00B8B44E /* OfflineAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898422E7862AF00B8B44E /* OfflineAPIService.swift */; };
 		063898482E7862D800B8B44E /* SyncStatusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898472E7862D800B8B44E /* SyncStatusWidget.swift */; };
 		0638984A2E78631200B8B44E /* LocalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063898492E78631200B8B44E /* LocalModels.swift */; };
+		0D0F062B2E86E25D00C3BFB6 /* TaskOperationSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D0F062A2E86E25D00C3BFB6 /* TaskOperationSession.swift */; };
 		0DA3155D2E78F84F00817FD1 /* CorrectionFlowViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3155C2E78F84F00817FD1 /* CorrectionFlowViewModel.swift */; };
 		0DA3155E2E78F84F00817FD1 /* CorrectionFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3155B2E78F84F00817FD1 /* CorrectionFlowView.swift */; };
 		0DA315612E78FA1000817FD1 /* InspectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA3155F2E78FA1000817FD1 /* InspectionView.swift */; };
@@ -77,6 +78,7 @@
 		063898432E7862AF00B8B44E /* SyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncManager.swift; sourceTree = "<group>"; };
 		063898472E7862D800B8B44E /* SyncStatusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusWidget.swift; sourceTree = "<group>"; };
 		063898492E78631200B8B44E /* LocalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModels.swift; sourceTree = "<group>"; };
+		0D0F062A2E86E25D00C3BFB6 /* TaskOperationSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskOperationSession.swift; sourceTree = "<group>"; };
 		0DA315472E78E22C00817FD1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		0DA3155B2E78F84F00817FD1 /* CorrectionFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionFlowView.swift; sourceTree = "<group>"; };
 		0DA3155C2E78F84F00817FD1 /* CorrectionFlowViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionFlowViewModel.swift; sourceTree = "<group>"; };
@@ -229,6 +231,7 @@
 				0DE0C4122E7AF03B00CF7394 /* UserSessionManager.swift */,
 				0638982E2E7856DA00B8B44E /* AuthenticationManager.swift */,
 				063898412E7862AF00B8B44E /* DatabaseManager.swift */,
+				0D0F062A2E86E25D00C3BFB6 /* TaskOperationSession.swift */,
 				063898422E7862AF00B8B44E /* OfflineAPIService.swift */,
 				063898432E7862AF00B8B44E /* SyncManager.swift */,
 			);
@@ -493,6 +496,7 @@
 				0DE21F2F2E668D8C00ABAD27 /* TaskGroupView.swift in Sources */,
 				0DE21F312E668DA500ABAD27 /* PrimaryButton.swift in Sources */,
 				0DA315612E78FA1000817FD1 /* InspectionView.swift in Sources */,
+				0D0F062B2E86E25D00C3BFB6 /* TaskOperationSession.swift in Sources */,
 				0DA315662E78FBD300817FD1 /* VisionBarcodeScanner.swift in Sources */,
 				0DA315622E78FA1000817FD1 /* InspectionViewModel.swift in Sources */,
 				0DE21F172E667AB400ABAD27 /* CapiCar_for_YOSApp.swift in Sources */,
@@ -659,6 +663,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G9WCF548BC;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
@@ -687,6 +692,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G9WCF548BC;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
@@ -714,6 +720,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G9WCF548BC;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
@@ -733,6 +740,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G9WCF548BC;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
@@ -751,6 +759,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G9WCF548BC;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
 				MARKETING_VERSION = 1.0;
@@ -768,6 +777,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G9WCF548BC;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CapiCarForYOS/Info.plist;
 				MARKETING_VERSION = 1.0;

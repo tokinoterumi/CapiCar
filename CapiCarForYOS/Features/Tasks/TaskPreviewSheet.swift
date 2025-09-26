@@ -93,6 +93,9 @@ struct TaskPreviewSheet: View {
         }
         .onAppear {
             Task {
+                // Trigger proactive sync when opening task preview to ensure fresh data
+                print("📄 TASK PREVIEW: Sheet appeared, triggering proactive sync")
+                await SyncManager.shared.triggerSync()
                 await fetchLatestTaskData()
             }
         }
@@ -100,6 +103,15 @@ struct TaskPreviewSheet: View {
             // Refresh data when a new task is passed in
             Task {
                 await fetchLatestTaskData()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TaskDataChanged"))) { notification in
+            // Refresh data when any task is updated (offline operations, sync, etc.)
+            if let taskId = notification.userInfo?["taskId"] as? String, taskId == task.id {
+                print("📄 TASK PREVIEW: Received data change notification for task \(taskId), refreshing...")
+                Task {
+                    await fetchLatestTaskData()
+                }
             }
         }
     }
@@ -143,9 +155,9 @@ struct TaskPreviewSheet: View {
 
         switch task.status {
         case .pending: baseColor = .orange
-        case .picking, .picked: baseColor = .blue
+        case .picking: baseColor = .blue
         case .packed: baseColor = Color(.systemIndigo)
-        case .inspecting, .inspected: baseColor = .teal
+        case .inspecting: baseColor = .teal
         case .correctionNeeded: baseColor = .red
         case .correcting: baseColor = .pink
         case .completed: baseColor = .green
@@ -294,7 +306,7 @@ struct TaskPreviewSheet: View {
                         .foregroundColor(.secondary)
 
                     Text(formatIssueType(reason))
-                        .font(.body)
+                        .font(.subheadline)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(Color.red.opacity(0.1))
@@ -328,14 +340,8 @@ struct TaskPreviewSheet: View {
 
                     Text(notes)
                         .font(.body)
-                        .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(Color.red.opacity(0.1))
                         .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.red.opacity(0.3), lineWidth: 1)
-                        )
                 }
             }
 
@@ -355,12 +361,12 @@ struct TaskPreviewSheet: View {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
-                Text("🔧 Correction Required")
+                Text("Correction Required")
                     .font(.headline)
                     .fontWeight(.semibold)
             }
 
-            Text("This task requires corrections before it can be completed. Please address the inspection issues and make necessary adjustments.")
+            Text("This task requires corrections before it can be completed.")
                 .font(.body)
                 .foregroundColor(.primary)
         }
@@ -368,10 +374,6 @@ struct TaskPreviewSheet: View {
         .padding()
         .background(Color.orange.opacity(0.05))
         .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1.5)
-        )
     }
 
     private var workHistorySection: some View {
@@ -486,7 +488,7 @@ struct TaskPreviewSheet: View {
             // These statuses are unassigned - any checked-in operator can start
             print("  - Result: true (unassigned status)")
             return true
-        case .picking, .picked, .inspecting, .inspected, .correcting:
+        case .picking, .inspecting, .correcting:
             // These statuses require operator assignment match
             let result = task.currentOperator?.id == staffManager.currentOperator?.id
             print("  - Result: \(result) (operator match required)")
@@ -513,10 +515,8 @@ struct TaskPreviewSheet: View {
         switch task.status {
         case .pending: return "Start Picking"
         case .picking: return "View Progress"
-        case .picked: return "Start Packing"
         case .packed: return "Start Inspection"
         case .inspecting: return "View Progress"
-        case .inspected: return "Complete Inspection"
         case .correctionNeeded: return "Start Correction"
         case .correcting: return "View Progress"
         case .completed: return "View Details"
@@ -530,7 +530,7 @@ struct TaskPreviewSheet: View {
         }
 
         switch task.status {
-        case .picking, .picked, .packed, .inspecting, .correctionNeeded, .correcting:
+        case .picking, .packed, .inspecting, .correctionNeeded, .correcting:
             if task.currentOperator?.id != staffManager.currentOperator?.id {
                 return "This task is currently assigned to \(task.currentOperator?.name ?? "another operator")"
             }
@@ -546,7 +546,7 @@ struct TaskPreviewSheet: View {
         let currentStatus = task.status
 
         switch currentStatus {
-        case .packed, .inspecting, .inspected:
+        case .packed, .inspecting:
             return true
         default:
             return false
@@ -563,7 +563,7 @@ struct TaskPreviewSheet: View {
         // This ensures we navigate based on the actual database state, not stale memory
         if task.status == .correctionNeeded {
             return .correction
-        } else if task.status == .packed || task.status == .inspecting || task.status == .inspected {
+        } else if task.status == .packed || task.status == .inspecting {
             return .inspection
         } else {
             return .workflow
@@ -601,19 +601,24 @@ struct TaskPreviewSheet: View {
         let isOnline = OfflineAPIService.shared.isOnline
         print("🔍 FETCH DEBUG: Currently online: \(isOnline)")
 
-        // If we're offline and this TaskPreviewSheet was just created with fresh online data,
-        // use that data instead of fetching stale cached data
+        // If we're offline, fetch from local database to get the most up-to-date local data
         if !isOnline {
-            print("🔍 FETCH DEBUG: Device is offline - using existing task data to prevent stale override")
-            print("🔍 FETCH DEBUG: Current task already has status: \(currentTask.status.rawValue)")
+            print("🔍 FETCH DEBUG: Device is offline - fetching from local database")
 
-            // Still try to fetch work history if possible
             do {
+                let latestTask = try await OfflineAPIService.shared.fetchTask(id: task.id)
+                print("🔍 FETCH DEBUG: Fetched offline task with status: \(latestTask.status.rawValue)")
+
+                // Update with latest local data
+                currentTask = latestTask
+
+                // Also fetch work history
                 let history = try await OfflineAPIService.shared.fetchTaskWorkHistory(taskId: task.id)
                 workHistory = history
                 print("TaskPreviewSheet: Fetched \(history.count) work history entries (offline)")
             } catch {
-                print("🔍 FETCH DEBUG: Could not fetch work history offline: \(error)")
+                print("🔍 FETCH DEBUG: Could not fetch task from local database: \(error)")
+                // Keep current data if local fetch fails
                 workHistory = [] // Ensure we have empty array instead of undefined state
             }
 
@@ -686,12 +691,12 @@ struct TaskPreviewSheet: View {
     private func formatIssueType(_ issueType: String) -> String {
         // Convert snake_case issue types to readable format
         let issueTypeMapping: [String: String] = [
-            "damaged_item": "Damaged Item / 商品破損",
-            "missing_item": "Missing Item / 商品不足",
-            "wrong_item": "Wrong Item / 商品違い",
-            "quality_issue": "Quality Issue / 品質問題",
-            "packaging_issue": "Packaging Issue / 梱包問題",
-            "other": "Other / その他"
+            "damaged_item": "Damaged Item",
+            "missing_item": "Missing Item",
+            "wrong_item": "Wrong Item",
+            "quality_issue": "Quality Issue",
+            "packaging_issue": "Packaging Issue",
+            "other": "Other"
         ]
 
         return issueTypeMapping[issueType] ?? issueType.replacingOccurrences(of: "_", with: " ").capitalized

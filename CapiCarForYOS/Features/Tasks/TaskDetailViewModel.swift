@@ -85,8 +85,7 @@ class TaskDetailViewModel: ObservableObject {
         // Update button state
         updateCanStartPacking()
 
-        // Sync checklist changes to server
-        await syncChecklistToServer()
+        // No immediate sync - checklist is UI-only until task completion
     }
     
     /// Decrements the picked quantity for a specific checklist item.
@@ -104,8 +103,7 @@ class TaskDetailViewModel: ObservableObject {
         // Update button state
         updateCanStartPacking()
 
-        // Sync checklist changes to server
-        await syncChecklistToServer()
+        // No immediate sync - checklist is UI-only until task completion
     }
 
     /// Toggles the completion status for a single-quantity item.
@@ -121,10 +119,7 @@ class TaskDetailViewModel: ObservableObject {
         // Update button state
         updateCanStartPacking()
 
-        // Sync checklist changes to server
-        Task {
-            await syncChecklistToServer()
-        }
+        // No immediate sync - checklist is UI-only until task completion
     }
 
     /// Updates the canStartPacking state based on current checklist completion
@@ -136,31 +131,15 @@ class TaskDetailViewModel: ObservableObject {
         print("DEBUG: UI State - canStartPacking: \(canStartPacking), primaryActionText: '\(primaryActionText)', canPerformPrimaryAction: \(canPerformPrimaryAction)")
 
         // Handle state transitions based on checklist completion
+        // SIMPLIFIED DESIGN: Checklist completion is purely UI state
+        // No automatic status transitions based on checklist completion
+        // Status only changes when user explicitly completes the packing with weight/dimensions
+
         if task.status == .pending {
-            // Pending should automatically transition to picking when user enters TaskDetailView
-            // This happens in init(), not here
-            print("DEBUG: Status is pending - should have transitioned to picking in init()")
+            print("DEBUG: Status is pending - should transition to picking in init()")
         } else if task.status == .picking {
-            if allItemsCompleted {
-                print("DEBUG: All items completed - completing picking")
-                Task {
-                    await completePicking()
-                    print("DEBUG: completePicking() action completed, status: \(self.task.status)")
-                }
-            }
-            // If not all items completed, stay in picking
-        } else if task.status == .picked {
-            if !allItemsCompleted {
-                print("DEBUG: Items uncompleted - reverting from picked to picking")
-                Task {
-                    await startPicking() // Revert to picking when items become incomplete
-                    print("DEBUG: Reverted to picking status: \(self.task.status)")
-                }
-            }
-            // If all items completed, stay in picked
+            print("DEBUG: Status is picking - checklist completion is UI-only")
         } else if task.status == .correcting {
-            // Correcting tasks should stay in correcting status regardless of checklist completion
-            // The checklist completion affects UI state but not the correcting status itself
             print("DEBUG: Status is correcting - maintaining correcting status")
         }
 
@@ -177,7 +156,7 @@ class TaskDetailViewModel: ObservableObject {
         }
 
         switch task.status {
-        case .picking, .picked: return "Packing Completed"
+        case .picking: return "Packing Completed"
         case .inspecting: return "Complete Inspection"
         case .correcting: return "Complete Correction"
         default: return ""
@@ -197,10 +176,7 @@ class TaskDetailViewModel: ObservableObject {
         case .picking:
             // During picking: button enabled only when all items are completed (no weight required yet)
             return canStartPacking
-        case .picked:
-            // During picked: button enabled when all items completed AND weight entered
-            return canStartPacking && !weightInput.isEmpty
-        case .inspecting, .inspected:
+        case .inspecting:
             return canCompleteInspection // Can complete inspection only when criteria are met
         case .correcting:
             // For correction workflow, require weight (dimensions selected from dropdown)
@@ -227,13 +203,11 @@ class TaskDetailViewModel: ObservableObject {
     // MARK: - UI State Properties
     
     var isInCorrectionFlow: Bool {
-        // In a real app, you might have a task status like .inCorrection
-        // For now, we can track this with additional state if needed
-        return false // TODO: Implement correction flow state tracking
+        return task.status == .correctionNeeded || task.status == .correcting
     }
     
     var needsWeightAndDimensions: Bool {
-        return task.status == .picked
+        return task.status == .picking && canStartPacking
     }
     
     var checklistCompletionRate: Double {
@@ -259,10 +233,7 @@ class TaskDetailViewModel: ObservableObject {
 
         switch task.status {
         case .picking:
-            // If all items are completed and weight is entered, complete picking then start packing
-            await completePicking()
-            await startPacking()
-        case .picked:
+            // Directly transition from picking to packed with weight/dimensions
             await startPacking()
         case .inspecting:
             await completeInspection()
@@ -282,21 +253,28 @@ class TaskDetailViewModel: ObservableObject {
         print("DEBUG: startPicking() completed, status is now: \(task.status)")
     }
     
-    /// Complete picking (just finish picking items)
-    func completePicking() async {
-        await performTaskAction(.completePicking)
-    }
+    // completePicking() removed - no longer needed in simplified design
     
-    /// Start packing with weight and dimensions
+    /// Start packing with weight, dimensions, and final checklist
     func startPacking() async {
         guard !weightInput.isEmpty else {
             errorMessage = "Please enter weight before starting packing."
             return
         }
 
+        guard canStartPacking else {
+            errorMessage = "Please complete all checklist items before packing."
+            return
+        }
+
+        // Include checklist in the payload for final submission
+        let checklistData = try? JSONEncoder().encode(checklistItems)
+        let checklistString = checklistData.flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
         let payload = [
             "weight": weightInput,
-            "dimensions": String(selectedDimension)
+            "dimensions": String(selectedDimension),
+            "checklist": checklistString
         ]
         await performTaskAction(.startPacking, payload: payload)
     }
@@ -407,7 +385,9 @@ class TaskDetailViewModel: ObservableObject {
                 payload: payload
             )
             print("DEBUG: Action succeeded, updating task from \(task.status) to \(updatedTask.status)")
-            self.task = updatedTask
+            await MainActor.run {
+                self.task = updatedTask
+            }
         } catch {
             let isOnline = offlineAPIService.isOnline
             self.errorMessage = isOnline
@@ -415,7 +395,7 @@ class TaskDetailViewModel: ObservableObject {
                 : "Action saved offline. Will sync when connection is restored."
             print("DEBUG: Error performing task action \(action): \(error)")
         }
-        
+
         isLoading = false
     }
     
@@ -516,7 +496,7 @@ class TaskDetailViewModel: ObservableObject {
             let newStatus = updatedTask.status
 
             // Update the task but preserve checklist items that user might still be interacting with
-            var mergedTask = updatedTask
+            let mergedTask = updatedTask
             // Keep our current checklist since user might still be modifying it
             // The checklist sync is separate from task status changes
 

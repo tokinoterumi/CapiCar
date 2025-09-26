@@ -189,7 +189,6 @@ class DatabaseManager {
         let allLogs = try mainContext.fetch(descriptor)
         return allLogs.filter { log in
             log.syncStatus == .pendingSync ||
-            log.syncStatus == .pendingPrioritySync ||
             log.syncStatus == .awaitingServerAck
         }
     }
@@ -342,9 +341,40 @@ class DatabaseManager {
         }
     }
 
-    /// Update a single task with sequence-based conflict resolution (used for task actions)
+    /// Update a single task with sequence-based conflict resolution (used for server updates)
     func updateTaskWithSequenceResolution(_ serverTask: FulfillmentTask) throws {
         try saveTaskWithConflictResolution(serverTask)
+    }
+
+    /// Save task changes directly to local database (used for offline operations)
+    /// This bypasses conflict resolution since we know the changes are local
+    func saveTaskDirectly(_ task: FulfillmentTask) throws {
+        guard let existingLocalTask = try fetchLocalTask(id: task.id) else {
+            print("❌ DIRECT SAVE: Task \(task.id) not found locally")
+            throw DatabaseError.taskNotFound(task.id)
+        }
+
+        print("💾 DIRECT SAVE: Updating task \(task.id) directly (offline operation)")
+        print("💾 DIRECT SAVE: Status: \(existingLocalTask.status) → \(LocalTaskStatus(from: task.status))")
+        print("💾 DIRECT SAVE: Sequence: \(existingLocalTask.operationSequence) → \(task.operationSequence ?? 0)")
+
+        // Update task properties directly without conflict resolution
+        existingLocalTask.status = LocalTaskStatus(from: task.status)
+        existingLocalTask.isPaused = task.isPaused ?? false
+        existingLocalTask.operationSequence = task.operationSequence ?? existingLocalTask.operationSequence
+        existingLocalTask.lastModifiedLocally = Date()
+
+        // Update operator if present
+        if let serverOperator = task.currentOperator {
+            existingLocalTask.assignedStaffId = serverOperator.id
+            existingLocalTask.assignedStaffName = serverOperator.name
+        }
+
+        // Mark as modified locally (not synced)
+        existingLocalTask.syncStatus = .pendingSync
+
+        try mainContext.save()
+        print("✅ DIRECT SAVE: Task \(task.id) saved successfully")
     }
 
     /// Fetch all tasks and convert to FulfillmentTasks
@@ -398,7 +428,7 @@ class DatabaseManager {
         case .useLocal(let reason):
             print("🔄 CONFLICT RESOLVED: Using local data for task \(serverTask.id) - \(reason)")
             // Keep local changes, mark for priority sync
-            localTask.syncStatus = .pendingPrioritySync
+            localTask.syncStatus = .pendingSync
             localTask.lastModifiedLocally = Date()
 
         case .requiresManualResolution(let localTime, let serverTime):
@@ -537,7 +567,6 @@ class DatabaseManager {
 
         // Case 1: No local changes pending - safe to use server
         if localTask.syncStatus != .pendingSync &&
-           localTask.syncStatus != .pendingPrioritySync &&
            localTask.syncStatus != .conflictPendingResolution &&
            localTask.syncStatus != .pendingSyncWithSequenceDrift &&
            localTask.syncStatus != .awaitingServerAck {
@@ -641,6 +670,43 @@ class DatabaseManager {
                 reason: "Server (\(serverTime)) > Local (\(localTime))"
             )
         }
+    }
+
+    // MARK: - Debug Methods (Development Only)
+
+    /// Clear all local data for testing - USE WITH CAUTION!
+    func clearAllLocalData() throws {
+        print("🧹 DEBUG: Clearing all local data...")
+
+        // Delete all tasks (this will cascade delete checklist items)
+        let taskDescriptor = FetchDescriptor<LocalTask>()
+        let allTasks = try mainContext.fetch(taskDescriptor)
+        for task in allTasks {
+            mainContext.delete(task)
+        }
+        print("🧹 DEBUG: Deleted \(allTasks.count) tasks")
+
+        // Delete all audit logs
+        let auditDescriptor = FetchDescriptor<LocalAuditLog>()
+        let allAuditLogs = try mainContext.fetch(auditDescriptor)
+        for log in allAuditLogs {
+            mainContext.delete(log)
+        }
+        print("🧹 DEBUG: Deleted \(allAuditLogs.count) audit logs")
+
+        // Delete all pending operations
+        let operationDescriptor = FetchDescriptor<LocalPendingOperation>()
+        let allOperations = try mainContext.fetch(operationDescriptor)
+        for operation in allOperations {
+            mainContext.delete(operation)
+        }
+        print("🧹 DEBUG: Deleted \(allOperations.count) pending operations")
+
+        // Note: LocalStaff is a struct, not a SwiftData model, so no deletion needed
+
+        // Save changes
+        try mainContext.save()
+        print("🧹 DEBUG: Successfully cleared all local data!")
     }
 }
 

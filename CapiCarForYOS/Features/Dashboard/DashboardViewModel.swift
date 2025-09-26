@@ -38,9 +38,21 @@ class DashboardViewModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.markDataChangesPending()
-            // Force refresh dashboard data after task changes
-            Task {
+            Task { @MainActor in
+                self?.markDataChangesPending()
+                // Force refresh dashboard data after task changes
+                await self?.forceFetchDashboardData()
+            }
+        }
+
+        // Listen for network connectivity changes to refresh data
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("NetworkStatusChanged"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                print("🔗 DASHBOARD: Network status changed, refreshing dashboard data")
                 await self?.forceFetchDashboardData()
             }
         }
@@ -114,6 +126,9 @@ class DashboardViewModel: ObservableObject {
 
     /// Force refresh dashboard data, bypassing throttling (for explicit user actions)
     func forceFetchDashboardData() async {
+        // Test connectivity first to ensure SyncStatusWidget shows correct status
+        await SyncManager.shared.testConnectivity()
+
         lastFetchTime = .distantPast // Reset throttle
         await fetchDashboardData()
     }
@@ -195,6 +210,27 @@ class DashboardViewModel: ObservableObject {
         }
 
         return sections
+    }
+
+    // MARK: - Debug Methods (Development Only)
+
+    /// Clear all local data and refresh dashboard - USE WITH CAUTION!
+    func clearAllLocalData() async {
+        do {
+            print("🧹 DASHBOARD: Clearing all local data...")
+            try DatabaseManager.shared.clearAllLocalData()
+            print("🧹 DASHBOARD: Successfully cleared local data, refreshing...")
+
+            // Clear current dashboard data
+            groupedTasks = nil
+            hasLoadedInitialData = false
+
+            // Force refresh from server
+            await forceFetchDashboardData()
+        } catch {
+            print("❌ DASHBOARD: Failed to clear local data: \(error)")
+            errorMessage = "Failed to clear local data: \(error.localizedDescription)"
+        }
     }
 }
 

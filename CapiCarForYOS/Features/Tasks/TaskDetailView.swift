@@ -56,8 +56,8 @@ struct TaskDetailView: View {
             footerActionView
         }
         .overlay(alignment: .bottomLeading) {
-            // Floating barcode scan button - only show during picking (not picked)
-            if viewModel.task.status == .picking || viewModel.task.status == .pending {
+            // Floating barcode scan button - only show during picking when not all items are completed
+            if (viewModel.task.status == .picking && !viewModel.canStartPacking) || viewModel.task.status == .pending {
                 floatingBarcodeScanButton
             }
         }
@@ -128,6 +128,13 @@ struct TaskDetailView: View {
                     dismiss()
                 }
             )
+        }
+        .onAppear {
+            // Trigger proactive sync when entering task detail view to ensure fresh data
+            Task {
+                print("📋 TASK DETAIL: View appeared, triggering proactive sync")
+                await SyncManager.shared.triggerSync()
+            }
         }
     }
     
@@ -210,8 +217,8 @@ struct TaskDetailView: View {
     
     private var footerActionView: some View {
         VStack(spacing: 16) {
-            // Show input fields when picked or correcting (not during picking)
-            if viewModel.task.status == .picked || viewModel.task.status == .correcting {
+            // Show input fields when all checklist items are completed during picking, or when correcting
+            if (viewModel.task.status == .picking && viewModel.canStartPacking) || viewModel.task.status == .correcting {
                 VStack(spacing: 16) {
                     // Weight input field
                     VStack(alignment: .leading, spacing: 8) {
@@ -311,7 +318,7 @@ struct TaskDetailView: View {
                     action: {
                         Task {
                             // Check if this is an action that should dismiss the view after completion
-                            let shouldDismiss = (viewModel.task.status == .picked && viewModel.primaryActionText == "Packing Completed") ||
+                            let shouldDismiss = (viewModel.task.status == .picking && viewModel.primaryActionText == "Packing Completed") ||
                                               (viewModel.task.status == .correcting && viewModel.primaryActionText == "Complete Correction")
 
                             await viewModel.handlePrimaryAction()

@@ -168,6 +168,11 @@ struct CorrectionFlowView: View {
                                 // Happy path: Complete entire workflow in one action
                                 await viewModel.completeHappyPathWorkflow()
                                 dismiss()
+                            } else if viewModel.selectedErrorType == .packingError && viewModel.costImpact == .affectsCost {
+                                // Print New Label path: Packing error that affects cost
+                                print("🏷️ Printing new label for packing error with cost impact...")
+                                await viewModel.printNewLabel()
+                                dismiss()
                             } else if viewModel.selectedErrorType == .pickingError {
                                 // Picking Error: Start correction and open TaskDetailView
                                 print("🔧 Starting correction for picking error...")

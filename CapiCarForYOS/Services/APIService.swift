@@ -14,13 +14,23 @@ enum APIError: Error {
 
 class APIService {
     static let shared = APIService()
-    
+
     private let baseURL: String
+    private let urlSession: URLSession
 
     private init() {
         // Dynamic API URL configuration for different network environments
         self.baseURL = APIService.buildBaseURL()
+
+        // Create custom URLSession with shorter timeouts for faster offline detection
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 8.0  // 8 seconds per request
+        config.timeoutIntervalForResource = 15.0 // 15 seconds total
+        config.waitsForConnectivity = false // Don't wait for connectivity
+        self.urlSession = URLSession(configuration: config)
+
         print("🌐 APIService initialized with base URL: \(self.baseURL)")
+        print("⚡ APIService configured with fast timeouts (request: 8s, resource: 15s)")
     }
 
     /// Update API base URL at runtime (useful for network changes)
@@ -46,21 +56,8 @@ class APIService {
             return manualURL
         }
 
-        // 2. For iOS Simulator, try localhost first
-        #if targetEnvironment(simulator)
-        return "http://localhost:3000/api"
-        #else
-        // 3. For real device, try common local network ranges
-        let commonIPs = [
-            "192.168.1.1",   // Common router IP
-            "192.168.0.1",   // Alternative router IP
-            "10.0.0.1"       // Some network setups
-        ]
-
-        // In a real app, you'd implement network discovery here
-        // For now, fallback to a configurable default
-        return "http://100.64.1.66:3000/api"  // Updated to current IP
-        #endif
+        // 2. Default to production server on Render
+        return "https://capicar-server.onrender.com/api"
     }
     
     let jsonDecoder: JSONDecoder = {
@@ -107,7 +104,7 @@ class APIService {
             throw APIError.badURL
         }
         
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await urlSession.data(from: url)
         let response = try jsonDecoder.decode(DashboardResponse.self, from: data)
 
         guard response.success, let dashboardData = response.data else {
@@ -130,7 +127,7 @@ class APIService {
             throw APIError.badURL
         }
         
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await urlSession.data(from: url)
         let response = try jsonDecoder.decode(TaskResponse.self, from: data)
 
         guard response.success, let taskData = response.data else {
@@ -162,7 +159,7 @@ class APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try jsonEncoder.encode(requestBody)
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await urlSession.data(for: request)
         let response = try jsonDecoder.decode(TaskResponse.self, from: data)
 
         guard response.success, let taskData = response.data else {
@@ -199,7 +196,7 @@ class APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try jsonEncoder.encode(requestBody)
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await urlSession.data(for: request)
         let response = try jsonDecoder.decode(TaskResponse.self, from: data)
 
         guard response.success, let taskData = response.data else {
@@ -216,7 +213,7 @@ class APIService {
             throw APIError.badURL
         }
         
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await urlSession.data(from: url)
         let response = try jsonDecoder.decode(StaffResponse.self, from: data)
 
         guard response.success, let staffData = response.data else {
@@ -238,7 +235,7 @@ class APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try jsonEncoder.encode(requestBody)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await urlSession.data(for: request)
         let response = try jsonDecoder.decode(SingleStaffResponse.self, from: data)
 
         guard response.success, let newStaff = response.data else {
@@ -260,7 +257,7 @@ class APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try jsonEncoder.encode(requestBody)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await urlSession.data(for: request)
         let response = try jsonDecoder.decode(SingleStaffResponse.self, from: data)
 
         guard response.success, let staffData = response.data else {
@@ -278,7 +275,7 @@ class APIService {
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await urlSession.data(for: request)
         let response = try jsonDecoder.decode(DeleteStaffResponse.self, from: data)
 
         guard response.success else {
@@ -312,7 +309,7 @@ class APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await urlSession.data(for: request)
         let response = try jsonDecoder.decode(CheckInResponse.self, from: data)
 
         guard response.success, let resultData = response.data else {
@@ -334,7 +331,7 @@ class APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try jsonEncoder.encode(reportData)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await urlSession.data(for: request)
         let response = try jsonDecoder.decode(IssueReportResponse.self, from: data)
 
         guard response.success else {
@@ -348,7 +345,7 @@ class APIService {
             throw APIError.badURL
         }
 
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await urlSession.data(from: url)
         let response = try jsonDecoder.decode(WorkHistoryResponse.self, from: data)
 
         guard response.success else {
@@ -358,19 +355,69 @@ class APIService {
         return response.data
     }
 
-    // MARK: - Audit Log Sync API (Placeholder for future server-side implementation)
+    // MARK: - Audit Log Sync API
 
-    /// Sync audit log to server (placeholder method)
-    /// TODO: Implement server-side audit log endpoint as documented in SYNC_REQUIREMENTS.md
-    func syncAuditLog(_ auditPayload: [String: Any]) async throws {
-        // For now, this is a no-op since the server endpoint doesn't exist yet
-        // When the server endpoint is ready, implement the actual API call here
-        print("📝 AUDIT LOG SYNC: Placeholder call - server endpoint not implemented yet")
-        print("📝 Audit payload: \(auditPayload)")
+    /// Sync audit logs to server
+    func syncAuditLog(_ auditLogs: [LocalAuditLog]) async throws -> AuditLogSyncResponse {
+        guard let url = URL(string: "\(baseURL)/audit-logs/sync") else {
+            throw APIError.badURL
+        }
 
-        // Simulate success for now to prevent sync failures
-        // In the future, this should make an actual POST request to /api/audit-logs/sync
-        return
+        // Convert LocalAuditLog objects to the format expected by the server
+        let logPayloads = auditLogs.map { log in
+            let effectiveStaffId = log.staffId.isEmpty ? "unknown" : log.staffId
+            if log.staffId.isEmpty {
+                print("⚠️ AUDIT LOG: Using placeholder 'unknown' for missing staffId in log \(log.id)")
+            }
+            print("🔍 DEBUG AUDIT LOG: id=\(log.id), timestamp=\(log.timestamp), actionType='\(log.actionType)', staffId='\(effectiveStaffId)', taskId='\(log.taskId)'")
+            return AuditLogPayload(
+                timestamp: log.timestamp.toISOString(),
+                actionType: log.actionType,
+                staffId: effectiveStaffId,
+                taskId: log.taskId,
+                operationSequence: log.operationSequence,
+                oldValue: log.oldValue,
+                newValue: log.newValue,
+                details: log.details,
+                deletionFlag: log.deletionFlag
+            )
+        }
+
+        let requestBody = AuditLogSyncRequest(logs: logPayloads)
+
+        let jsonData = try jsonEncoder.encode(requestBody)
+
+        // Debug: Print the JSON payload being sent
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("🔍 DEBUG JSON PAYLOAD: \(jsonString)")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+
+        let (data, response) = try await urlSession.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorMessage = errorData["error"] as? String {
+                throw APIError.serverError(message: errorMessage)
+            }
+            throw APIError.serverError(message: "HTTP \(httpResponse.statusCode)")
+        }
+
+        do {
+            let auditSyncResponse = try jsonDecoder.decode(AuditLogSyncResponse.self, from: data)
+            print("📝 AUDIT LOG SYNC: Synced \(auditSyncResponse.syncedCount)/\(auditLogs.count) entries")
+            return auditSyncResponse
+        } catch {
+            throw APIError.decodingError(error: error)
+        }
     }
 }
 
@@ -401,6 +448,34 @@ struct UpdateStaffRequest: Codable {
 struct CheckInRequest: Codable {
     let staffId: String
     let action: CheckInAction
+}
+
+struct AuditLogSyncRequest: Codable {
+    let logs: [AuditLogPayload]
+}
+
+struct AuditLogPayload: Codable {
+    let timestamp: String
+    let actionType: String
+    let staffId: String
+    let taskId: String
+    let operationSequence: Int
+    let oldValue: String?
+    let newValue: String?
+    let details: String
+    let deletionFlag: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case timestamp
+        case actionType = "action_type"
+        case staffId = "staff_id"
+        case taskId = "task_id"
+        case operationSequence = "operation_sequence"
+        case oldValue = "old_value"
+        case newValue = "new_value"
+        case details
+        case deletionFlag = "deletion_flag"
+    }
 }
 
 
@@ -475,17 +550,91 @@ struct WorkHistoryResponse: Codable {
     let data: [WorkHistoryEntry]
 }
 
+struct AuditLogSyncResponse: Codable {
+    let success: Bool
+    let syncedCount: Int
+    let errors: [AuditLogSyncError]
+
+    private enum CodingKeys: String, CodingKey {
+        case success
+        case syncedCount = "synced_count"
+        case errors
+    }
+}
+
+struct AuditLogSyncError: Codable {
+    let log: [String: AnyCodable]?
+    let error: String
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.error = try container.decode(String.self, forKey: .error)
+        self.log = try? container.decode([String: AnyCodable].self, forKey: .log)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(error, forKey: .error)
+        try container.encodeIfPresent(log, forKey: .log)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case log, error
+    }
+}
+
+// Helper type for decoding arbitrary JSON values
+struct AnyCodable: Codable {
+    let value: Any
+
+    init(_ value: Any) {
+        self.value = value
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+
+        if let intValue = try? container.decode(Int.self) {
+            value = intValue
+        } else if let stringValue = try? container.decode(String.self) {
+            value = stringValue
+        } else if let boolValue = try? container.decode(Bool.self) {
+            value = boolValue
+        } else if let doubleValue = try? container.decode(Double.self) {
+            value = doubleValue
+        } else {
+            value = NSNull()
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+
+        if let intValue = value as? Int {
+            try container.encode(intValue)
+        } else if let stringValue = value as? String {
+            try container.encode(stringValue)
+        } else if let boolValue = value as? Bool {
+            try container.encode(boolValue)
+        } else if let doubleValue = value as? Double {
+            try container.encode(doubleValue)
+        } else {
+            try container.encodeNil()
+        }
+    }
+}
+
 // MARK: - Enums
 
 enum TaskAction: String, Codable, CaseIterable {
     case startPicking = "START_PICKING"
-    case completePicking = "COMPLETE_PICKING"
     case startPacking = "START_PACKING"
     case startInspection = "START_INSPECTION"
     case completeInspection = "COMPLETE_INSPECTION"
     case enterCorrection = "ENTER_CORRECTION"
     case startCorrection = "START_CORRECTION"
     case resolveCorrection = "RESOLVE_CORRECTION"
+    case labelCreated = "LABEL_CREATED"
     case reportException = "REPORT_EXCEPTION"
     case pauseTask = "PAUSE_TASK"
     case resumeTask = "RESUME_TASK"
@@ -495,5 +644,16 @@ enum TaskAction: String, Codable, CaseIterable {
 enum CheckInAction: String, Codable {
     case checkIn = "CHECK_IN"
     case checkOut = "CHECK_OUT"
+}
+
+// MARK: - Extensions
+
+extension Date {
+    /// Convert Date to ISO8601 string format
+    func toISOString() -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: self)
+    }
 }
 

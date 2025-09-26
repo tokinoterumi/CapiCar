@@ -68,13 +68,7 @@ router.post('/action', async (req, res) => {
                 );
                 break;
 
-            case TaskAction.COMPLETE_PICKING:
-                updatedTask = await airtableService.updateTaskStatus(
-                    task_id,
-                    TaskStatus.PICKED,
-                    operator_id
-                );
-                break;
+            // COMPLETE_PICKING removed - no longer exists in simplified design
 
             case TaskAction.START_PACKING:
                 console.log(`🔄 START_PACKING: Received payload:`, payload);
@@ -104,7 +98,7 @@ router.post('/action', async (req, res) => {
                         operator_id,
                         task_id,
                         TaskAction.START_PACKING,
-                        TaskStatus.PICKED,
+                        TaskStatus.PICKING, // Changed from PICKED to PICKING since intermediate status removed
                         TaskStatus.PACKED,
                         `Started packing. Weight: ${payload.weight}, Dimensions: ${payload.dimensions}`
                     );
@@ -119,14 +113,7 @@ router.post('/action', async (req, res) => {
                 );
                 break;
 
-            case TaskAction.COMPLETE_INSPECTION_CRITERIA:
-                // Transition to inspected state when all required criteria are met
-                updatedTask = await airtableService.updateTaskStatus(
-                    task_id,
-                    TaskStatus.INSPECTED,
-                    operator_id
-                );
-                break;
+            // COMPLETE_INSPECTION_CRITERIA removed - no longer needed in optimistic inspection flow
 
             case TaskAction.COMPLETE_INSPECTION:
                 updatedTask = await airtableService.updateTaskStatus(
@@ -169,6 +156,31 @@ router.post('/action', async (req, res) => {
                 );
                 break;
 
+            case TaskAction.LABEL_CREATED:
+                // Print New Label action - complete the task directly after label creation
+                // Get current task status before updating
+                const currentTask = await airtableService.getTaskById(task_id);
+                const oldStatus = currentTask?.status;
+
+                updatedTask = await airtableService.updateTaskStatus(
+                    task_id,
+                    TaskStatus.COMPLETED,
+                    operator_id
+                );
+
+                // Log the specific LABEL_CREATED action manually to preserve it in audit log
+                if (operator_id && oldStatus) {
+                    await airtableService.logAction(
+                        operator_id,
+                        task_id,
+                        TaskAction.LABEL_CREATED,
+                        oldStatus,
+                        TaskStatus.COMPLETED,
+                        `New label printed. Task completed.`
+                    );
+                }
+                break;
+
             case TaskAction.PAUSE_TASK:
                 // Use atomic pause method that handles audit logging
                 updatedTask = await airtableService.pauseTask(task_id, operator_id);
@@ -190,19 +202,28 @@ router.post('/action', async (req, res) => {
                     });
                 }
 
-                // Log exception without changing status
-                if (operator_id) {
+                // Get current task status before updating
+                const currentExceptionTask = await airtableService.getTaskById(task_id);
+                const oldExceptionStatus = currentExceptionTask?.status;
+
+                // Transition task to PENDING status after reporting issue
+                updatedTask = await airtableService.updateTaskStatus(
+                    task_id,
+                    TaskStatus.PENDING,
+                    operator_id
+                );
+
+                // Log exception with status transition
+                if (operator_id && oldExceptionStatus) {
                     await airtableService.logAction(
                         operator_id,
                         task_id,
                         TaskAction.REPORT_EXCEPTION,
-                        '',
-                        '',
+                        oldExceptionStatus,
+                        TaskStatus.PENDING,
                         `Exception reported: ${payload.reason} - ${payload.notes || ''}`
                     );
                 }
-
-                updatedTask = await airtableService.getTaskById(task_id);
                 break;
 
             case TaskAction.RESUME_TASK:

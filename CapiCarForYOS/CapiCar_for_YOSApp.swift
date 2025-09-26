@@ -53,7 +53,9 @@ struct CapiCar_for_YOSApp: App {
 struct RootView: View {
     @EnvironmentObject private var authManager: AuthenticationManager
     @EnvironmentObject private var staffManager: StaffManager
-    
+    @EnvironmentObject private var syncManager: SyncManager
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         Group {
             if authManager.isAuthenticated {
@@ -67,6 +69,22 @@ struct RootView: View {
             } else {
                 // User is not authenticated
                 LoginView()
+            }
+        }
+        .onAppear {
+            // Trigger sync when app first launches
+            Task {
+                print("🚀 APP LAUNCH: Triggering proactive sync")
+                await syncManager.triggerSync()
+            }
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            // Trigger sync when app becomes active from background
+            if oldPhase == .background && newPhase == .active {
+                Task {
+                    print("🔄 APP ACTIVE: Triggering proactive sync from background")
+                    await syncManager.triggerSync()
+                }
             }
         }
     }
