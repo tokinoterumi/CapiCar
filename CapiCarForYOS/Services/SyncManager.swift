@@ -651,10 +651,6 @@ class SyncManager: ObservableObject {
         case .synced, .error:
             // 這些狀態不應該在待同步列表中
             break
-        case .pendingPrioritySync:
-            // Deprecated case - treat as pendingSync
-            print("⚠️ Encountered deprecated pendingPrioritySync - please clear local data")
-            try databaseManager.markTaskAsSynced(taskId: localTask.id)
         }
     }
 

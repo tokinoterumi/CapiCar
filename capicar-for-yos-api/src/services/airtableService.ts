@@ -449,19 +449,35 @@ export class AirtableService {
         details?: string,
         timestamp?: string
     ): Promise<number> {
-        try {
-            // First validate that the staff member exists and get the record ID
-            const staffMember = await this.getStaffById(operatorId);
-            if (!staffMember) {
-                console.warn(`⚠️  Skipping audit log - Staff member ${operatorId} not found`);
-                return 0;
-            }
+        let staffRecordId: string | null = null;
+        let staffName = 'Unknown';
+        let auditFields: any = {};
 
-            // Get the Airtable record ID for the staff member
-            const staffRecordId = await this.getStaffRecordId(operatorId);
-            if (!staffRecordId) {
-                console.warn(`⚠️  Skipping audit log - Staff record ID not found for ${operatorId}`);
-                return 0;
+        try {
+
+            // Handle "unknown" staff gracefully
+            if (operatorId === 'unknown' || operatorId === '') {
+                console.log(`📝 AUDIT LOG: Using placeholder for unknown staff on task ${taskId}`);
+                // Use null for staff_id to indicate unknown operator
+                staffRecordId = null;
+                staffName = 'Unknown Operator';
+            } else {
+                // Try to find the staff member
+                const staffMember = await this.getStaffById(operatorId);
+                if (!staffMember) {
+                    console.warn(`⚠️  Staff member ${operatorId} not found, using unknown placeholder`);
+                    staffRecordId = null;
+                    staffName = `Unknown (${operatorId})`;
+                } else {
+                    // Get the Airtable record ID for the staff member
+                    staffRecordId = await this.getStaffRecordId(operatorId);
+                    if (!staffRecordId) {
+                        console.warn(`⚠️  Staff record ID not found for ${operatorId}, using unknown placeholder`);
+                        staffName = staffMember.name || `Unknown (${operatorId})`;
+                    } else {
+                        staffName = staffMember.name;
+                    }
+                }
             }
 
             // Get the next operation sequence for this task
@@ -471,14 +487,19 @@ export class AirtableService {
             const mappedActionType = this.mapActionType(actionType);
 
             // Prepare fields, avoiding empty strings for multiple choice fields
-            const auditFields: any = {
+            auditFields = {
                 timestamp: timestamp || new Date().toISOString(),
-                staff_id: [staffRecordId], // Link to Staff (using actual record ID)
                 task_id: taskId, // Single line text
                 action_type: mappedActionType,
-                details: `${actionType}: ${details || ''}`.trim(), // Include original action in details
+                details: `${actionType}: ${details || ''} (by ${staffName})`.trim(), // Include original action and staff name
                 operation_sequence: nextSequence // Add sequence number
             };
+
+            // Only add staff_id if we have a valid record ID
+            if (staffRecordId) {
+                auditFields.staff_id = [staffRecordId]; // Link to Staff (using actual record ID)
+            }
+            // If no valid staff record, the details field will indicate who performed the action
 
             // Only include old_value and new_value if they have actual content
             // This avoids issues with multiple choice fields that don't accept empty strings
@@ -491,11 +512,21 @@ export class AirtableService {
 
             await base(AUDIT_LOG_TABLE).create(auditFields);
 
-            console.log(`✅ Audit log created: ${actionType} by ${staffMember.name} on task ${taskId} (seq: ${nextSequence})`);
+            console.log(`✅ Audit log created: ${actionType} by ${staffName} on task ${taskId} (seq: ${nextSequence})`);
             return nextSequence;
         } catch (error) {
-            console.error('❌ Error logging action:', error);
-            // Don't throw error for audit logging - it shouldn't break the main operation
+            console.error('❌ Error logging action:', {
+                fullError: error,
+                errorMessage: error instanceof Error ? error.message : 'Unknown error',
+                errorStack: error instanceof Error ? error.stack : undefined,
+                operatorId,
+                taskId,
+                actionType,
+                timestamp,
+                staffRecordId: staffRecordId ?? 'null (unknown staff)',
+                auditFields
+            });
+            // Still don't throw for audit logging, but provide detailed error info
             return 0;
         }
     }
@@ -526,22 +557,33 @@ export class AirtableService {
     private mapActionType(actionType: string): string {
         // Map to actual action types that exist in Airtable Audit_Log table
         const actionMappings: { [key: string]: string } = {
-            'START_PICKING': 'Tasked_Started',
-            // 'COMPLETE_PICKING': removed - no longer exists in simplified design
+            // TaskAction enum mappings
+            'START_PICKING': 'Task_Started',
             'START_PACKING': 'Packing_Started',
             'START_INSPECTION': 'Inspection_Started',
-            'COMPLETE_INSPECTION': 'Task_Completed', // Optimistic completion - goes directly to completed
-            'ENTER_CORRECTION': 'Inspection_Failed', // Explicit failure action when issues found
+            'COMPLETE_INSPECTION': 'Task_Completed',
+            'ENTER_CORRECTION': 'Inspection_Failed',
             'START_CORRECTION': 'Correction_Started',
             'RESOLVE_CORRECTION': 'Correction_Completed',
+            'LABEL_CREATED': 'Other_Actions', // Label creation is a misc action
             'REPORT_EXCEPTION': 'Exception_Logged',
-            'REPORT_ISSUE': 'Exception_Logged',
             'PAUSE_TASK': 'Task_Paused',
             'RESUME_TASK': 'Task_Resumed',
-            'CANCEL_TASK': 'Task_Auto_Cancelled'
+            'CANCEL_TASK': 'Task_Auto_Cancelled',
+
+            // ViewModel specific action types
+            'INSPECTION_PASSED': 'Task_Completed',
+            'INSPECTION_FAILED': 'Inspection_Failed',
+            'TASK_PAUSED': 'Task_Paused',
+            'CORRECTION_STARTED': 'Correction_Started',
+            'TASK_COMPLETED': 'Task_Completed',
+
+            // Generic action types (for test/fallback scenarios)
+            'status_change': 'Other_Actions',
+            'checklist_update': 'Other_Actions'
         };
 
-        return actionMappings[actionType] || 'Field_Updated';
+        return actionMappings[actionType] || 'Other_Actions'; // Clean fallback for unknown actions
     }
 
     // Helper method to format action for display
@@ -550,7 +592,7 @@ export class AirtableService {
         const originalAction = details.split(':')[0];
 
         const displayMappings: { [key: string]: string } = {
-            'Tasked_Started': 'Task Started',
+            'Task_Started': 'Task Started',
             // 'Task_Picked': removed - no longer exists in simplified design
             'Packing_Started': 'Packing Completed',
             'Inspection_Started': 'Inspection Started',
@@ -576,7 +618,7 @@ export class AirtableService {
     // Helper method to get appropriate icon for action
     private getActionIcon(actionType: string): string {
         const iconMappings: { [key: string]: string } = {
-            'Tasked_Started': 'play.circle',
+            'Task_Started': 'play.circle',
             // 'Task_Picked': removed - no longer exists in simplified design
             'Packing_Started': 'shippingbox',
             'Inspection_Started': 'magnifyingglass',
